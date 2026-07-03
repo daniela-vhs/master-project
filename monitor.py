@@ -6,7 +6,7 @@ import json
 import os
 
 st.set_page_config(
-    page_title="Final Project Monitor — Curves & Volatility Surface",
+    page_title="Thesis Monitor — Greeks & PnL: HW vs FMM",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -444,22 +444,22 @@ with tab_conv:
             strikes = vs.get("strikes", [])
             strike_rows = ""
             for s in strikes:
-                label = s["strike_label"]
-                stype = s["strike_type"]
-                val   = f"{s['strike_value_pct']:+.3f}%" if s["strike_value_pct"] is not None else "date-dependent"
+                label     = s["strike_label"]
+                stype     = s["strike_type"]
+                val       = f"{s['strike_value_pct']:+.3f}%" if s["strike_value_pct"] is not None else "date-dependent"
                 n_tickers = len(s.get("tickers", {}))
-                strike_rows += f"""
-                <div class='conv-row'>
-                  <span class='conv-key'>{label}</span>
-                  <span class='conv-val'>{val} &nbsp;<span style='color:#9ca3af;font-weight:400;'>({stype}, {n_tickers} tickers)</span></span>
-                </div>"""
+                strike_rows += (
+                    f"<div class=\"conv-row\">"
+                    f"<span class=\"conv-key\">{label}</span>"
+                    f"<span class=\"conv-val\">{val}&nbsp;"
+                    f"<span style=\"color:#9ca3af;font-weight:400\">({stype}, {n_tickers} tickers)</span>"
+                    f"</span></div>"
+                )
 
-            st.markdown(f"""
-            <div class='conv-card'>
-              <div class='conv-title'>Strikes ({len(strikes)})</div>
-              {strike_rows}
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(
+                f"<div class=\"conv-card\"><div class=\"conv-title\">Strikes ({len(strikes)})</div>{strike_rows}</div>",
+                unsafe_allow_html=True
+            )
 
             # Ticker table for selected strike
             strike_labels_list = [s["strike_label"] for s in strikes]
