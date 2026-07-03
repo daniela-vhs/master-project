@@ -1,0 +1,51 @@
+{
+  "curve": "Euribor 6M IRS",
+  "description": "EUR Interest Rate Swap Annual fixed vs 6M Euribor SemiAnnual float",
+  "settlement": "T+2",
+  "discounting": "OIS",
+  "fixed_leg": {
+    "day_count": "30U/360",
+    "pay_freq": "Annual",
+    "bus_adj": "Modified Following",
+    "adjust": "Accrual and Pay Dates",
+    "roll_conv": "Backward",
+    "calc_cal": "TE",
+    "pay_delay": "0 Business Days",
+    "currency": "EUR"
+  },
+  "float_leg": {
+    "index": "EUR006M Index",
+    "day_count": "ACT/360",
+    "pay_freq": "SemiAnnual",
+    "reset_freq": "SemiAnnual",
+    "bus_adj": "Modified Following",
+    "adjust": "Accrual and Pay Dates",
+    "roll_conv": "Backward",
+    "calc_cal": "TE",
+    "fixing_cal": "TE",
+    "fixing_lag": "2 Business Days",
+    "pay_delay": "0 Business Days",
+    "reset_position": "In Advance",
+    "currency": "EUR"
+  },
+  "instruments": [
+    {"ticker": "EUSA1 BGN Curncy",  "tenor": "1Y"},
+    {"ticker": "EUSA1C BGN Curncy", "tenor": "15M"},
+    {"ticker": "EUSA1F BGN Curncy", "tenor": "18M"},
+    {"ticker": "EUSA1I BGN Curncy", "tenor": "21M"},
+    {"ticker": "EUSA2 BGN Curncy",  "tenor": "2Y"},
+    {"ticker": "EUSA3 BGN Curncy",  "tenor": "3Y"},
+    {"ticker": "EUSA4 BGN Curncy",  "tenor": "4Y"},
+    {"ticker": "EUSA5 BGN Curncy",  "tenor": "5Y"},
+    {"ticker": "EUSA6 BGN Curncy",  "tenor": "6Y"},
+    {"ticker": "EUSA7 BGN Curncy",  "tenor": "7Y"},
+    {"ticker": "EUSA8 BGN Curncy",  "tenor": "8Y"},
+    {"ticker": "EUSA9 BGN Curncy",  "tenor": "9Y"},
+    {"ticker": "EUSA10 BGN Curncy", "tenor": "10Y"},
+    {"ticker": "EUSA11 BGN Curncy", "tenor": "11Y"},
+    {"ticker": "EUSA12 BGN Curncy", "tenor": "12Y"},
+    {"ticker": "EUSA15 BGN Curncy", "tenor": "15Y"},
+    {"ticker": "EUSA20 BGN Curncy", "tenor": "20Y"},
+    {"ticker": "EUSA30 BGN Curncy", "tenor": "30Y"}
+  ]
+}
