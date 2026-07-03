@@ -6,7 +6,7 @@ import json
 import os
 
 st.set_page_config(
-    page_title="Thesis Monitor — Greeks & PnL: HW vs FMM",
+    page_title="Final Project Monitor — Curves & Volatility Surface",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -112,7 +112,7 @@ with tab_curves:
     with left:
         st.markdown('<span class="section-label">Curve selector</span>', unsafe_allow_html=True)
         curve_choice = st.radio("Curve", ["ESTR", "EURIBOR6M", "Both"],
-                                horizontal=True, label_visibility="collapsed")
+                                index=2, horizontal=True, label_visibility="collapsed")
 
         day_data = zero_rates[zero_rates["TradeDate"] == selected_date].copy()
         day_data["DaysOffset"] = (day_data["Maturity"] - selected_date).dt.days
