@@ -268,6 +268,43 @@ with tab_vols:
         </div>
         """, unsafe_allow_html=True)
 
+        # ── 3D vol surface ────────────────────────────────────────────────────
+        st.markdown('<span class="section-label">3D vol surface</span>', unsafe_allow_html=True)
+
+        tenor_idx  = list(range(len(cap_tenors)))
+        z_3d       = []
+        for tenor in cap_tenors:
+            row_vals = []
+            for s in strikes_sorted:
+                cell = otm_vols[(otm_vols["Tenor"] == tenor) & (otm_vols["Strike"] == s)]
+                row_vals.append(float(cell["Vol"].iloc[0]) if not cell.empty else np.nan)
+            z_3d.append(row_vals)
+
+        fig3d = go.Figure(go.Surface(
+            z=z_3d,
+            x=strikes_sorted,
+            y=tenor_idx,
+            colorscale=[[0, "#dbeafe"], [0.5, "#3b82f6"], [1, "#1e3a8a"]],
+            colorbar=dict(title=dict(text="bp", font=dict(size=10)), thickness=10),
+            hovertemplate="Strike: %{x:.3f}%<br>Tenor: %{y}<br>Vol: %{z:.1f} bp<extra></extra>"
+        ))
+        fig3d.update_layout(
+            height=420, margin=dict(l=0, r=0, t=8, b=0),
+            paper_bgcolor="white",
+            font=dict(family="Inter", size=10),
+            scene=dict(
+                xaxis=dict(title="Strike (%)", tickformat=".2f"),
+                yaxis=dict(
+                    title="Tenor",
+                    tickvals=tenor_idx,
+                    ticktext=cap_tenors
+                ),
+                zaxis=dict(title="Vol (bp)"),
+                camera=dict(eye=dict(x=1.8, y=-1.8, z=0.8))
+            )
+        )
+        st.plotly_chart(fig3d, use_container_width=True, config={"displayModeBar": True})
+
     with right_v:
         # ── Heatmap ───────────────────────────────────────────────────────────
         st.markdown('<span class="section-label">Vol surface heatmap</span>', unsafe_allow_html=True)
