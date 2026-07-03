@@ -1,2 +1,1 @@
-# master-project
-MAFINRISK Final Project
+# MAFINRISK Final Project
