@@ -1,7 +1,9 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import json
 import os
 
@@ -23,6 +25,7 @@ div[data-testid="stDecoration"] { display: none; }
 .thesis-sub    { font-size: 0.72rem; color: #6b7280; font-family: 'JetBrains Mono', monospace; margin: 0.15rem 0 0; }
 .section-label { font-size: 0.62rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #9ca3af; margin-bottom: 0.4rem; display: block; }
 .pill { display: inline-block; background: #f0f4ff; color: #1e3a8a; border-radius: 4px; padding: 2px 8px; font-size: 0.68rem; font-family: 'JetBrains Mono', monospace; font-weight: 500; margin-right: 6px; }
+.pill-warn { background: #fef2f2; color: #991b1b; }
 .vol-table { border-collapse: collapse; width: 100%; white-space: nowrap; font-family: 'JetBrains Mono', monospace; font-size: 0.67rem; }
 .vol-table th { color: #6b7280; text-align: right; padding: 4px 8px; border-bottom: 1px solid #e5e7eb; font-weight: 500; }
 .vol-table td { text-align: right; padding: 3px 8px; color: #374151; }
@@ -35,6 +38,7 @@ div[data-testid="stDecoration"] { display: none; }
 .conv-row { display: flex; justify-content: space-between; font-size: 0.72rem; padding: 3px 0; border-bottom: 0.5px solid #f3f4f6; }
 .conv-key { color: #6b7280; }
 .conv-val { color: #111827; font-family: 'JetBrains Mono', monospace; font-weight: 500; }
+hr.thin { border: none; border-top: 0.5px solid #e5e7eb; margin: 1.5rem 0; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -53,9 +57,36 @@ def load_vols():
     return df
 
 @st.cache_data
+def load_stripped_vols():
+    df = pd.read_parquet("clean_data/cap_stripping.parquet")
+    df["TradeDate"] = pd.to_datetime(df["TradeDate"])
+    df["Tenor"] = df["Tenor"].astype(str)
+    return df
+
+@st.cache_data
 def load_rates():
     df = pd.read_parquet("clean_data/rates.parquet")
     df["Date"] = pd.to_datetime(df["Date"])
+    return df
+
+@st.cache_data
+def load_irs_repricing():
+    df = pd.read_parquet("validation/irs_repricing.parquet")
+    df["TradeDate"] = pd.to_datetime(df["TradeDate"])
+    df["Tenor"] = df["Tenor"].astype(str)
+    return df
+
+@st.cache_data
+def load_cap_repricing_validation():
+    df = pd.read_parquet("validation/cap_repricing_validation.parquet")
+    df["Date"] = pd.to_datetime(df["Date"])
+    df["Tenor"] = df["Tenor"].astype(str)
+    return df
+
+@st.cache_data
+def load_hw_calibration():
+    df = pd.read_parquet("clean_data/hw_calibration.parquet")
+    df["TradeDate"] = pd.to_datetime(df["TradeDate"])
     return df
 
 @st.cache_data
@@ -68,12 +99,42 @@ def load_conventions():
                 convs[name] = json.load(f)
     return convs
 
-zero_rates  = load_zero_rates()
-vols        = load_vols()
-rates_df    = load_rates()
-conventions = load_conventions()
+zero_rates     = load_zero_rates()
+vols           = load_vols()
+stripped_vols  = load_stripped_vols()
+rates_df       = load_rates()
+irs_repricing  = load_irs_repricing()
+cap_repricing  = load_cap_repricing_validation()
+hw_calib       = load_hw_calibration()
+conventions    = load_conventions()
 
 all_dates   = sorted(zero_rates["TradeDate"].unique())
+
+# Tenors common to the flat surface, the stripped surface and the cap-repricing
+# validation set — this project's locked scope (3Y-10Y annual cap tenors).
+COMMON_TENORS = ["3Y", "4Y", "5Y", "6Y", "7Y", "8Y", "9Y", "10Y"]
+
+# Strikes common to both surfaces. The stripped (caplet) surface lacks +0.125%
+# and +0.25%, since those columns are only quoted against Euribor 3M.
+_flat_strikes  = set(vols.loc[~vols["IsATM"], "Strike"].dropna().unique())
+_strip_strikes = set((stripped_vols.loc[~stripped_vols["IsATM"], "Strike"].dropna().unique() * 100).round(3))
+COMMON_STRIKES = sorted(_flat_strikes & _strip_strikes)
+COMMON_STRIKE_LABELS = [f"{s:+.3f}%" if s != 0.0 else "0.000%" for s in COMMON_STRIKES]
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+def date_select_slider(dates, key, default_frac=0.6, label="Trade date"):
+    """A slider that steps discretely through actual dates (not a bare index)."""
+    dates = sorted(dates)
+    default_idx = min(int(len(dates) * default_frac), len(dates) - 1)
+    selected = st.select_slider(
+        label,
+        options=dates,
+        value=dates[default_idx],
+        format_func=lambda d: pd.Timestamp(d).strftime("%d %b %Y"),
+        label_visibility="collapsed",
+        key=key,
+    )
+    return pd.Timestamp(selected)
 
 # ── Header ────────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -84,25 +145,19 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab_curves, tab_vols, tab_conv = st.tabs(["Zero curves", "Vol surface", "Market conventions"])
+tab_curves, tab_vols, tab_hw, tab_conv = st.tabs(
+    ["Zero curves", "Vol surface", "Hull-White", "Market conventions"]
+)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 1 — ZERO CURVES
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_curves:
-    date_idx = st.slider(
-        "Trade date",
-        min_value=0, max_value=len(all_dates) - 1,
-        value=int(len(all_dates) * 0.6),
-        format="", label_visibility="collapsed",
-        key="date_slider_curves"
-    )
-    selected_date = pd.Timestamp(all_dates[date_idx])
+    selected_date = date_select_slider(all_dates, key="date_slider_curves")
 
     c1, c2, c3 = st.columns([2, 1, 1])
     with c1:
-        st.markdown(f'<span class="pill">📅 {selected_date.strftime("%d %b %Y")}</span>'
-                    f'<span class="pill">day {date_idx + 1} / {len(all_dates)}</span>',
+        st.markdown(f'<span class="pill">📅 {selected_date.strftime("%d %b %Y")}</span>',
                     unsafe_allow_html=True)
 
     st.markdown("<div style='margin:0.75rem 0;'></div>", unsafe_allow_html=True)
@@ -167,7 +222,7 @@ with tab_curves:
         # Historical zero rate for one tenor
         st.markdown("<div style='margin-top:1rem;'></div>", unsafe_allow_html=True)
         st.markdown('<span class="section-label">Historical zero rate — single tenor</span>', unsafe_allow_html=True)
-        
+
         available_tenors_estr = zero_rates[zero_rates["Curve"] == "ESTR"]["Tenor"].unique().tolist()
         hist_tenor = st.selectbox("Tenor", sorted(available_tenors_estr, key=lambda x: float(x[:-1]) * (12 if x[-1]=="Y" else 1)),
                                   index=4, label_visibility="collapsed")
@@ -193,188 +248,370 @@ with tab_curves:
         )
         st.plotly_chart(fig3, use_container_width=True, config={"displayModeBar": False})
 
+    # ── Curve bootstrap validation (IRS repricing) ──────────────────────────
+    st.markdown("<hr class='thin'>", unsafe_allow_html=True)
+    st.markdown('<span class="section-label">Bootstrap validation — IRS repricing error</span>', unsafe_allow_html=True)
+    st.caption("Feeding each curve's own bootstrapped instruments back through the pricer. Error = recovered par rate − quoted rate, in bp.")
+
+    val_left, val_right = st.columns([3, 2], gap="large")
+
+    with val_left:
+        agg = (irs_repricing
+               .groupby("TradeDate")[["EstrError", "EurError"]]
+               .apply(lambda x: x.abs().max())
+               .reset_index())
+
+        figv = make_subplots(specs=[[{"secondary_y": True}]])
+        figv.add_trace(go.Scatter(
+            x=agg["TradeDate"], y=agg["EstrError"], name="ESTR (left)",
+            mode="lines", line=dict(color="#1e3a8a", width=1.2),
+            hovertemplate="%{x|%d %b %Y}: %{y:.5f} bp<extra>ESTR</extra>"
+        ), secondary_y=False)
+        figv.add_trace(go.Scatter(
+            x=agg["TradeDate"], y=agg["EurError"], name="Euribor 6M (right)",
+            mode="lines", line=dict(color="#b45309", width=1.2),
+            hovertemplate="%{x|%d %b %Y}: %{y:.5f} bp<extra>Euribor 6M</extra>"
+        ), secondary_y=True)
+
+        figv.update_layout(
+            height=280, margin=dict(l=0, r=0, t=8, b=0),
+            paper_bgcolor="white", plot_bgcolor="white",
+            font=dict(family="Inter", size=10),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, font=dict(size=10)),
+            xaxis=dict(showgrid=True, gridcolor="#f3f4f6", showline=True, linecolor="#e5e7eb"),
+            hovermode="x unified"
+        )
+        figv.update_yaxes(title_text="ESTR error (bp)", ticksuffix=" bp", secondary_y=False,
+                           showgrid=True, gridcolor="#f3f4f6", showline=True, linecolor="#e5e7eb")
+        figv.update_yaxes(title_text="Euribor 6M error (bp)", ticksuffix=" bp", secondary_y=True,
+                           showgrid=False, showline=True, linecolor="#e5e7eb")
+        st.plotly_chart(figv, use_container_width=True, config={"displayModeBar": False})
+        st.caption("Max absolute repricing error across all tenors, per trade date.")
+
+    with val_right:
+        day_val = irs_repricing[irs_repricing["TradeDate"] == selected_date].copy()
+        if day_val.empty:
+            st.info("No IRS repricing data for this date.")
+        else:
+            day_val = day_val.sort_values("Tenor", key=lambda s: s.map(lambda t: float(t[:-1])))
+            day_val["EstrError (bp)"] = day_val["EstrError"].round(6)
+            day_val["EurError (bp)"]  = day_val["EurError"].round(6)
+            st.dataframe(day_val[["Tenor", "EstrError (bp)", "EurError (bp)"]].reset_index(drop=True),
+                         use_container_width=True, height=280)
+
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 2 — VOL SURFACE
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_vols:
-    vol_dates     = sorted(vols["Date"].unique())
-    date_idx_v    = st.slider(
-        "Trade date",
-        min_value=0, max_value=len(vol_dates) - 1,
-        value=int(len(vol_dates) * 0.6),
-        format="", label_visibility="collapsed",
-        key="date_slider_vols"
-    )
-    selected_date_v = pd.Timestamp(vol_dates[date_idx_v])
+    # Only dates present in BOTH the flat and the stripped surface can be compared
+    vol_dates = sorted(set(vols["Date"].unique()) & set(stripped_vols["TradeDate"].unique()))
+
+    selected_date_v = date_select_slider(vol_dates, key="date_slider_vols")
     st.markdown(f'<span class="pill">📅 {selected_date_v.strftime("%d %b %Y")}</span>',
                 unsafe_allow_html=True)
     st.markdown("<div style='margin:0.75rem 0;'></div>", unsafe_allow_html=True)
 
-    day_vols = vols[vols["Date"] == selected_date_v].copy()
+    day_vols   = vols[vols["Date"] == selected_date_v].copy()
+    day_strip  = stripped_vols[stripped_vols["TradeDate"] == selected_date_v].copy()
 
-    # ATM rates from par rates (Euribor 6M swap rates as proxy for ATM forward)
-    atm_rates_raw = rates_df[
-        (rates_df["Date"] == selected_date_v) &
-        (rates_df["Curve"] == "EURIBOR6M")
-    ].set_index("Tenor")["Rate"]
+    otm_vols   = day_vols[~day_vols["IsATM"]].copy()
+    otm_strip  = day_strip[~day_strip["IsATM"]].copy()
 
-    tenor_to_swap = {
-        "3Y": "3Y", "4Y": "4Y", "5Y": "5Y", "6Y": "6Y", "7Y": "7Y",
-        "8Y": "8Y", "9Y": "9Y", "10Y": "10Y", "12Y": "12Y",
-    }
-    cap_tenors     = list(tenor_to_swap.keys())
-    otm_vols       = day_vols[~day_vols["IsATM"]].copy()
-    atm_vols       = day_vols[day_vols["IsATM"]].copy()
-    strikes_sorted = sorted(otm_vols["Strike"].dropna().unique())
-    strike_labels  = [f"{s:+.3f}%" if s != 0.0 else "0.000%" for s in strikes_sorted]
+    strikes_sorted = COMMON_STRIKES
+    strike_labels  = COMMON_STRIKE_LABELS
 
-    # ── Vol table ─────────────────────────────────────────────────────────────
-    left_v, right_v = st.columns([3, 2], gap="large")
+    def strip_lookup(tenor, strike_pct):
+        """Stripped vol for a cap tenor and a flat-surface strike quoted in %."""
+        target = strike_pct / 100
+        cell = otm_strip[(otm_strip["Tenor"] == tenor) & np.isclose(otm_strip["Strike"], target)]
+        return float(cell["StrippedVol"].iloc[0]) if not cell.empty else np.nan
 
-    with left_v:
-        st.markdown('<span class="section-label">Cap normal vol surface — bp (Bachelier)</span>', unsafe_allow_html=True)
+    def flat_lookup(tenor, strike_pct):
+        cell = otm_vols[(otm_vols["Tenor"] == tenor) & (otm_vols["Strike"] == strike_pct)]
+        return float(cell["Vol"].iloc[0]) if not cell.empty else np.nan
 
-        header = "<tr><th class='tc'>Tenor</th><th style='text-align:center;'>ATM rate</th><th class='atm-col'>ATM vol</th>"
-        for sl in strike_labels:
-            header += f"<th>{sl}</th>"
-        header += "</tr>"
+    # ── Build matrices (flat vs stripped) over the common tenor scope ───────
+    z_flat, z_strip = [], []
+    for tenor in COMMON_TENORS:
+        z_flat.append([flat_lookup(tenor, s) for s in strikes_sorted])
+        z_strip.append([strip_lookup(tenor, s) for s in strikes_sorted])
 
-        rows = ""
-        for tenor in cap_tenors:
-            swap_tenor = tenor_to_swap[tenor]
-            atm_rate   = atm_rates_raw.get(swap_tenor, None)
-            atm_rate_s = f"{atm_rate:.3f}%" if atm_rate is not None else "—"
+    z_flat_arr  = np.array(z_flat, dtype=float)
+    z_strip_arr = np.array(z_strip, dtype=float)
+    zmin = np.nanmin([np.nanmin(z_flat_arr), np.nanmin(z_strip_arr)])
+    zmax = np.nanmax([np.nanmax(z_flat_arr), np.nanmax(z_strip_arr)])
+    colorscale = "Viridis"
 
-            atm_row = atm_vols[atm_vols["Tenor"] == tenor]
-            atm_vol = f"{atm_row['Vol'].iloc[0]:.1f}" if not atm_row.empty else "—"
+    st.markdown('<span class="section-label">Flat vs stripped vol surface — bp (Bachelier), 3Y-10Y scope</span>',
+                unsafe_allow_html=True)
 
-            row = f"<tr><td class='tc'>{tenor}</td><td style='text-align:center;'><span class='atm-rate'>{atm_rate_s}</span></td><td class='atm-col'>{atm_vol}</td>"
-            for s in strikes_sorted:
-                cell = otm_vols[(otm_vols["Tenor"] == tenor) & (otm_vols["Strike"] == s)]
-                val  = f"{cell['Vol'].iloc[0]:.1f}" if not cell.empty else "—"
-                row += f"<td>{val}</td>"
-            row += "</tr>"
-            rows += row
+    hm_left, hm_right = st.columns(2, gap="large")
 
-        st.markdown(f"""
-        <div style="overflow-x:auto; max-height:460px; overflow-y:auto; margin-bottom:1rem;">
-        <table class="vol-table">
-          <thead style="position:sticky;top:0;background:white;z-index:1;">
-            {header}
-            <tr><td colspan="{3+len(strikes_sorted)}" style="height:1px;background:#e5e7eb;padding:0;"></td></tr>
-          </thead>
-          <tbody>{rows}</tbody>
-        </table>
-        </div>
-        """, unsafe_allow_html=True)
-
-        # ── 3D vol surface ────────────────────────────────────────────────────
-        st.markdown('<span class="section-label">3D vol surface</span>', unsafe_allow_html=True)
-
-        tenor_idx  = list(range(len(cap_tenors)))
-        z_3d       = []
-        for tenor in cap_tenors:
-            row_vals = []
-            for s in strikes_sorted:
-                cell = otm_vols[(otm_vols["Tenor"] == tenor) & (otm_vols["Strike"] == s)]
-                row_vals.append(float(cell["Vol"].iloc[0]) if not cell.empty else np.nan)
-            z_3d.append(row_vals)
-
-        fig3d = go.Figure(go.Surface(
-            z=z_3d,
-            x=strikes_sorted,
-            y=tenor_idx,
-            colorscale=[[0, "#dbeafe"], [0.5, "#3b82f6"], [1, "#1e3a8a"]],
-            colorbar=dict(title=dict(text="bp", font=dict(size=10)), thickness=10),
-            hovertemplate="Strike: %{x:.3f}%<br>Tenor: %{y}<br>Vol: %{z:.1f} bp<extra></extra>"
-        ))
-        fig3d.update_layout(
-            height=420, margin=dict(l=0, r=0, t=8, b=0),
-            paper_bgcolor="white",
-            font=dict(family="Inter", size=10),
-            scene=dict(
-                xaxis=dict(title="Strike (%)", tickformat=".2f"),
-                yaxis=dict(
-                    title="Tenor",
-                    tickvals=tenor_idx,
-                    ticktext=cap_tenors
-                ),
-                zaxis=dict(title="Vol (bp)"),
-                camera=dict(eye=dict(x=1.8, y=-1.8, z=0.8))
+    for col, title, z in [(hm_left, "Flat (quoted)", z_flat_arr), (hm_right, "Stripped (caplet)", z_strip_arr)]:
+        with col:
+            st.markdown(f'<span class="section-label">{title}</span>', unsafe_allow_html=True)
+            z_text = [[f"{v:.1f}" if not np.isnan(v) else "" for v in row] for row in z]
+            figh = go.Figure(go.Heatmap(
+                z=z, x=strike_labels, y=COMMON_TENORS,
+                zmin=zmin, zmax=zmax, colorscale=colorscale,
+                text=z_text, texttemplate="%{text}",
+                textfont=dict(size=9, family="JetBrains Mono"),
+                hovertemplate="Tenor: %{y}<br>Strike: %{x}<br>Vol: %{z:.1f} bp<extra></extra>",
+                showscale=True, colorbar=dict(title=dict(text="bp", font=dict(size=10)), thickness=10, len=0.9),
+                xgap=1, ygap=1
+            ))
+            figh.update_layout(
+                height=320, margin=dict(l=0, r=30, t=8, b=0),
+                paper_bgcolor="white", plot_bgcolor="white",
+                font=dict(family="Inter", size=10),
+                xaxis=dict(title=dict(text="Strike", font=dict(size=10, color="#9ca3af")),
+                           tickangle=-45, type="category"),
+                yaxis=dict(title=dict(text="Cap tenor", font=dict(size=10, color="#9ca3af")),
+                           autorange="reversed", type="category"),
             )
-        )
-        st.plotly_chart(fig3d, use_container_width=True, config={"displayModeBar": True})
+            st.plotly_chart(figh, use_container_width=True, config={"displayModeBar": False})
 
-    with right_v:
-        # ── Heatmap ───────────────────────────────────────────────────────────
-        st.markdown('<span class="section-label">Vol surface heatmap</span>', unsafe_allow_html=True)
+    # ── 3D comparison ─────────────────────────────────────────────────────
+    st.markdown("<div style='margin-top:0.5rem;'></div>", unsafe_allow_html=True)
+    st.markdown('<span class="section-label">3D vol surface comparison</span>', unsafe_allow_html=True)
 
-        z_rows = []
-        for tenor in cap_tenors:
-            row_vals = []
-            for s in strikes_sorted:
-                cell = otm_vols[(otm_vols["Tenor"] == tenor) & (otm_vols["Strike"] == s)]
-                row_vals.append(float(cell["Vol"].iloc[0]) if not cell.empty else np.nan)
-            z_rows.append(row_vals)
+    tenor_idx = list(range(len(COMMON_TENORS)))
+    fig3d = make_subplots(
+        rows=1, cols=2,
+        specs=[[{"type": "surface"}, {"type": "surface"}]],
+        subplot_titles=("Flat", "Stripped"),
+        horizontal_spacing=0.02
+    )
+    fig3d.add_trace(go.Surface(
+        z=z_flat_arr, x=strikes_sorted, y=tenor_idx,
+        cmin=zmin, cmax=zmax, colorscale=colorscale, showscale=False,
+        hovertemplate="Strike: %{x:.3f}%<br>Tenor idx: %{y}<br>Vol: %{z:.1f} bp<extra>Flat</extra>"
+    ), row=1, col=1)
+    fig3d.add_trace(go.Surface(
+        z=z_strip_arr, x=strikes_sorted, y=tenor_idx,
+        cmin=zmin, cmax=zmax, colorscale=colorscale,
+        colorbar=dict(title=dict(text="bp", font=dict(size=10)), thickness=10, x=1.02),
+        hovertemplate="Strike: %{x:.3f}%<br>Tenor idx: %{y}<br>Vol: %{z:.1f} bp<extra>Stripped</extra>"
+    ), row=1, col=2)
 
-        z_text = [[f"{v:.1f}" if not np.isnan(v) else "" for v in row] for row in z_rows]
+    scene_common = dict(
+        xaxis=dict(title="Strike (%)", tickformat=".2f"),
+        yaxis=dict(title="Tenor", tickvals=tenor_idx, ticktext=COMMON_TENORS),
+        zaxis=dict(title="Vol (bp)", range=[zmin, zmax]),
+        camera=dict(eye=dict(x=1.8, y=-1.8, z=0.8))
+    )
+    fig3d.update_layout(
+        height=420, margin=dict(l=0, r=0, t=30, b=0),
+        paper_bgcolor="white", font=dict(family="Inter", size=10),
+        scene=scene_common, scene2=scene_common
+    )
 
-        fig2 = go.Figure(go.Heatmap(
-            z=z_rows,
-            x=strike_labels,
-            y=cap_tenors,
-            colorscale=[[0, "#dbeafe"], [0.5, "#3b82f6"], [1, "#1e3a8a"]],
-            text=z_text,
-            texttemplate="%{text}",
-            textfont=dict(size=9, family="JetBrains Mono"),
-            hovertemplate="Tenor: %{y}<br>Strike: %{x}<br>Vol: %{z:.1f} bp<extra></extra>",
-            showscale=True,
-            colorbar=dict(title=dict(text="bp", font=dict(size=10)), thickness=10, len=0.9),
-            xgap=1, ygap=1
+    # Render as a raw HTML component (not st.plotly_chart) so we can attach a
+    # JS listener that mirrors camera rotation/zoom/pan between the two scenes.
+    div_id = "vol3d_sync"
+    plot_html = fig3d.to_html(include_plotlyjs="cdn", full_html=False, div_id=div_id)
+    sync_script = f"""
+    <script>
+    (function() {{
+        var gd = document.getElementById("{div_id}");
+        var syncing = false;
+        gd.on("plotly_relayout", function(eventData) {{
+            if (syncing) return;
+            var update = {{}};
+            var changed = false;
+            if (eventData["scene.camera"]) {{
+                update["scene2.camera"] = eventData["scene.camera"];
+                changed = true;
+            }} else if (eventData["scene2.camera"]) {{
+                update["scene.camera"] = eventData["scene2.camera"];
+                changed = true;
+            }}
+            if (changed) {{
+                syncing = true;
+                Plotly.relayout(gd, update).then(function() {{ syncing = false; }});
+            }}
+        }});
+    }})();
+    </script>
+    """
+    components.html(plot_html + sync_script, height=440, scrolling=False)
+
+    # ── Historical evolution: flat vs stripped, per tenor & strike ─────────
+    st.markdown("<div style='margin-top:0.5rem;'></div>", unsafe_allow_html=True)
+    st.markdown('<span class="section-label">Historical evolution — flat vs stripped</span>', unsafe_allow_html=True)
+
+    ev_c1, ev_c2 = st.columns(2)
+    with ev_c1:
+        ev_tenor = st.selectbox("Cap tenor", COMMON_TENORS, index=4, key="ev_tenor")
+    with ev_c2:
+        ev_strike_label = st.selectbox("Strike", ["ATM"] + strike_labels, index=0, key="ev_strike")
+
+    if ev_strike_label == "ATM":
+        flat_hist  = vols[(vols["IsATM"]) & (vols["Tenor"] == ev_tenor)].sort_values("Date")
+        strip_hist = stripped_vols[(stripped_vols["IsATM"]) & (stripped_vols["Tenor"] == ev_tenor)].sort_values("TradeDate")
+        strip_x, strip_y = strip_hist["TradeDate"], strip_hist["StrippedVol"]
+    else:
+        ev_strike_val = strikes_sorted[strike_labels.index(ev_strike_label)]
+        flat_hist  = vols[(~vols["IsATM"]) & (vols["Tenor"] == ev_tenor) & (vols["Strike"] == ev_strike_val)].sort_values("Date")
+        strip_hist = stripped_vols[(~stripped_vols["IsATM"]) & (stripped_vols["Tenor"] == ev_tenor)
+                                    & np.isclose(stripped_vols["Strike"], ev_strike_val / 100)].sort_values("TradeDate")
+        strip_x, strip_y = strip_hist["TradeDate"], strip_hist["StrippedVol"]
+
+    fig_ev = go.Figure()
+    fig_ev.add_trace(go.Scatter(
+        x=flat_hist["Date"], y=flat_hist["Vol"], name="Flat",
+        mode="lines", line=dict(color="#b45309", width=1.3),
+        hovertemplate="%{x|%d %b %Y}: %{y:.1f} bp<extra>Flat</extra>"
+    ))
+    fig_ev.add_trace(go.Scatter(
+        x=strip_x, y=strip_y, name="Stripped",
+        mode="lines", line=dict(color="#1e3a8a", width=1.3),
+        hovertemplate="%{x|%d %b %Y}: %{y:.1f} bp<extra>Stripped</extra>"
+    ))
+    fig_ev.update_layout(
+        height=260, margin=dict(l=0, r=0, t=8, b=0),
+        paper_bgcolor="white", plot_bgcolor="white",
+        font=dict(family="Inter", size=10),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, font=dict(size=10)),
+        xaxis=dict(showgrid=True, gridcolor="#f3f4f6", showline=True, linecolor="#e5e7eb"),
+        yaxis=dict(showgrid=True, gridcolor="#f3f4f6", ticksuffix=" bp",
+                   title=dict(text="Normal vol", font=dict(size=10, color="#9ca3af")),
+                   showline=True, linecolor="#e5e7eb"),
+        hovermode="x unified"
+    )
+    st.plotly_chart(fig_ev, use_container_width=True, config={"displayModeBar": False})
+    st.caption(f"{ev_tenor} cap, strike {ev_strike_label} — flat (quoted, cap-level) vs stripped (caplet-level) normal vol.")
+
+    # ── Cap repricing validation ────────────────────────────────────────────
+    st.markdown("<hr class='thin'>", unsafe_allow_html=True)
+    st.markdown('<span class="section-label">Cap repricing validation — flat vol price vs stripped vol price</span>', unsafe_allow_html=True)
+    st.caption("Repricing a cap with stripped caplet vols and comparing to the flat-vol price. Error in bp, split ATM/non-ATM (different scales).")
+
+    cr_left, cr_right = st.columns(2, gap="large")
+
+    agg_non_atm = (cap_repricing[~cap_repricing["IsATM"]]
+                   .groupby("Date")["RepricingError"].apply(lambda x: x.abs().max()).reset_index())
+    agg_atm = (cap_repricing[cap_repricing["IsATM"]]
+               .groupby("Date")["RepricingError"].apply(lambda x: x.abs().max()).reset_index())
+
+    with cr_left:
+        st.markdown('<span class="section-label">Non-ATM — max error</span>', unsafe_allow_html=True)
+        fign = go.Figure(go.Scatter(
+            x=agg_non_atm["Date"], y=agg_non_atm["RepricingError"],
+            mode="lines", line=dict(color="#1e3a8a", width=1.2),
+            hovertemplate="%{x|%d %b %Y}: %{y:.2e} bp<extra></extra>"
         ))
-        fig2.update_layout(
-            height=340, margin=dict(l=0, r=40, t=8, b=0),
-            paper_bgcolor="white", plot_bgcolor="white",
-            font=dict(family="Inter", size=10),
-            xaxis=dict(
-                title=dict(text="Strike", font=dict(size=10, color="#9ca3af")),
-                tickangle=-45,
-                type="category",
-                tickmode="array",
-                tickvals=strike_labels,
-                ticktext=strike_labels,
-            ),
-            yaxis=dict(
-                title=dict(text="Cap tenor", font=dict(size=10, color="#9ca3af")),
-                autorange="reversed",
-                type="category"
-            )
-        )
-        st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
-
-        # ── ATM vol time series ───────────────────────────────────────────────
-        st.markdown('<span class="section-label">ATM vol — historical</span>', unsafe_allow_html=True)
-        atm_tenor_opt = st.selectbox("Cap tenor", cap_tenors, index=4,
-                                     label_visibility="collapsed", key="atm_tenor")
-        hist_atm = vols[(vols["IsATM"]) & (vols["Tenor"] == atm_tenor_opt)].copy()
-        fig4 = go.Figure(go.Scatter(
-            x=hist_atm["Date"], y=hist_atm["Vol"],
-            mode="lines", line=dict(color="#1e3a8a", width=1.5),
-            hovertemplate="%{x|%d %b %Y}: %{y:.1f} bp<extra></extra>"
-        ))
-        fig4.update_layout(
-            height=200, margin=dict(l=0, r=0, t=8, b=0),
+        fign.update_layout(
+            height=230, margin=dict(l=0, r=0, t=8, b=0),
             paper_bgcolor="white", plot_bgcolor="white",
             font=dict(family="Inter", size=10),
             xaxis=dict(showgrid=True, gridcolor="#f3f4f6", showline=True, linecolor="#e5e7eb"),
-            yaxis=dict(showgrid=True, gridcolor="#f3f4f6", ticksuffix=" bp",
-                       title=dict(text="Normal vol", font=dict(size=10, color="#9ca3af")),
-                       showline=True, linecolor="#e5e7eb"),
+            yaxis=dict(showgrid=True, gridcolor="#f3f4f6", ticksuffix=" bp", showline=True, linecolor="#e5e7eb"),
         )
-        st.plotly_chart(fig4, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fign, use_container_width=True, config={"displayModeBar": False})
+
+    with cr_right:
+        st.markdown('<span class="section-label">ATM — max error</span>', unsafe_allow_html=True)
+        figa = go.Figure(go.Scatter(
+            x=agg_atm["Date"], y=agg_atm["RepricingError"],
+            mode="lines", line=dict(color="#b45309", width=1.2),
+            hovertemplate="%{x|%d %b %Y}: %{y:.3f} bp<extra></extra>"
+        ))
+        figa.update_layout(
+            height=230, margin=dict(l=0, r=0, t=8, b=0),
+            paper_bgcolor="white", plot_bgcolor="white",
+            font=dict(family="Inter", size=10),
+            xaxis=dict(showgrid=True, gridcolor="#f3f4f6", showline=True, linecolor="#e5e7eb"),
+            yaxis=dict(showgrid=True, gridcolor="#f3f4f6", ticksuffix=" bp", showline=True, linecolor="#e5e7eb"),
+        )
+        st.plotly_chart(figa, use_container_width=True, config={"displayModeBar": False})
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 3 — MARKET CONVENTIONS
+# TAB 3 — HULL-WHITE
+# ══════════════════════════════════════════════════════════════════════════════
+with tab_hw:
+    hw_dates = sorted(hw_calib["TradeDate"].unique())
+    selected_date_hw = date_select_slider(hw_dates, key="date_slider_hw")
+
+    row_hw = hw_calib[hw_calib["TradeDate"] == selected_date_hw]
+    if not row_hw.empty:
+        r = row_hw.iloc[0]
+        bound_pill = '<span class="pill pill-warn">⚠ at bound</span>' if r["AtBound"] else '<span class="pill">interior</span>'
+        st.markdown(
+            f'<span class="pill">📅 {selected_date_hw.strftime("%d %b %Y")}</span>'
+            f'<span class="pill">a = {r["a"]:.4f}</span>'
+            f'<span class="pill">σ_HW = {r["sigma"]*10000:.1f} bp</span>'
+            f'<span class="pill">SSE = {r["ResidualError"]:.2e}</span>'
+            f'{bound_pill}',
+            unsafe_allow_html=True
+        )
+    st.markdown("<div style='margin:0.75rem 0;'></div>", unsafe_allow_html=True)
+
+    hw_calib_sorted = hw_calib.sort_values("TradeDate").copy()
+    hw_calib_sorted["sigma_bp"] = hw_calib_sorted["sigma"] * 10000
+    bound_colors = np.where(hw_calib_sorted["AtBound"], "#dc2626", "#1e3a8a")
+
+    fig_a = go.Figure()
+    fig_a.add_trace(go.Scatter(
+        x=hw_calib_sorted["TradeDate"], y=hw_calib_sorted["a"],
+        mode="markers", marker=dict(size=3, color=bound_colors),
+        hovertemplate="%{x|%d %b %Y}: a=%{y:.4f}<extra></extra>"
+    ))
+    fig_a.add_vline(x=selected_date_hw, line=dict(color="#9ca3af", width=1, dash="dot"))
+    fig_a.update_layout(
+        height=250, margin=dict(l=0, r=0, t=8, b=0),
+        paper_bgcolor="white", plot_bgcolor="white",
+        font=dict(family="Inter", size=10),
+        xaxis=dict(showgrid=True, gridcolor="#f3f4f6", showline=True, linecolor="#e5e7eb"),
+        yaxis=dict(title=dict(text="a — mean reversion speed", font=dict(size=10, color="#9ca3af")),
+                   showgrid=True, gridcolor="#f3f4f6", showline=True, linecolor="#e5e7eb"),
+    )
+
+    fig_s = go.Figure()
+    fig_s.add_trace(go.Scatter(
+        x=hw_calib_sorted["TradeDate"], y=hw_calib_sorted["sigma_bp"],
+        mode="markers", marker=dict(size=3, color=bound_colors),
+        hovertemplate="%{x|%d %b %Y}: σ=%{y:.1f} bp<extra></extra>"
+    ))
+    fig_s.add_vline(x=selected_date_hw, line=dict(color="#9ca3af", width=1, dash="dot"))
+    fig_s.update_layout(
+        height=250, margin=dict(l=0, r=0, t=8, b=0),
+        paper_bgcolor="white", plot_bgcolor="white",
+        font=dict(family="Inter", size=10),
+        xaxis=dict(showgrid=True, gridcolor="#f3f4f6", showline=True, linecolor="#e5e7eb"),
+        yaxis=dict(title=dict(text="σ_HW (bp)", font=dict(size=10, color="#9ca3af")), ticksuffix=" bp",
+                   showgrid=True, gridcolor="#f3f4f6", showline=True, linecolor="#e5e7eb"),
+    )
+
+    hw_c1, hw_c2 = st.columns(2, gap="large")
+    with hw_c1:
+        st.markdown('<span class="section-label">a — mean-reversion speed</span>', unsafe_allow_html=True)
+        st.plotly_chart(fig_a, use_container_width=True, config={"displayModeBar": False})
+    with hw_c2:
+        st.markdown('<span class="section-label">σ_HW — instantaneous volatility</span>', unsafe_allow_html=True)
+        st.plotly_chart(fig_s, use_container_width=True, config={"displayModeBar": False})
+
+    st.caption("Red points = calibration pinned at a bound (mostly the pre-2022 negative-rate window). Dotted line marks the selected date.")
+
+    st.markdown("<div style='margin-top:0.5rem;'></div>", unsafe_allow_html=True)
+    st.markdown('<span class="section-label">Residual calibration error (SSE)</span>', unsafe_allow_html=True)
+    fig_e = go.Figure(go.Scatter(
+        x=hw_calib_sorted["TradeDate"], y=hw_calib_sorted["ResidualError"],
+        mode="lines", line=dict(color="#374151", width=1),
+        hovertemplate="%{x|%d %b %Y}: %{y:.2e}<extra></extra>"
+    ))
+    fig_e.add_vline(x=selected_date_hw, line=dict(color="#9ca3af", width=1, dash="dot"))
+    fig_e.update_layout(
+        height=200, margin=dict(l=0, r=0, t=8, b=0),
+        paper_bgcolor="white", plot_bgcolor="white",
+        font=dict(family="Inter", size=10),
+        xaxis=dict(showgrid=True, gridcolor="#f3f4f6", showline=True, linecolor="#e5e7eb"),
+        yaxis=dict(type="log", showgrid=True, gridcolor="#f3f4f6", showline=True, linecolor="#e5e7eb"),
+    )
+    st.plotly_chart(fig_e, use_container_width=True, config={"displayModeBar": False})
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 4 — MARKET CONVENTIONS
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_conv:
     st.markdown("<div style='margin-top:0.5rem;'></div>", unsafe_allow_html=True)
@@ -466,12 +703,19 @@ with tab_conv:
             </div>
             """, unsafe_allow_html=True)
 
-            tenors = vs.get("tenors_years", [])
+            tenors_in    = vs.get("tenors_years_in_scope", [])
+            tenors_out   = vs.get("tenors_years_out_of_scope", [])
             st.markdown(f"""
             <div class='conv-card'>
-              <div class='conv-title'>Tenors ({len(tenors)})</div>
+              <div class='conv-title'>Tenors in scope ({len(tenors_in)})</div>
               <div style='font-family: JetBrains Mono, monospace; font-size: 0.72rem; color: #374151; line-height: 2;'>
-                {" · ".join(f"{t}Y" for t in tenors)}
+                {" · ".join(f"{t}Y" for t in tenors_in)}
+              </div>
+            </div>
+            <div class='conv-card'>
+              <div class='conv-title'>Tenors out of scope ({len(tenors_out)})</div>
+              <div style='font-family: JetBrains Mono, monospace; font-size: 0.72rem; color: #9ca3af; line-height: 2;'>
+                {" · ".join(f"{t}Y" for t in tenors_out) if tenors_out else "—"}
               </div>
             </div>
             """, unsafe_allow_html=True)
@@ -484,7 +728,7 @@ with tab_conv:
                 label     = s["strike_label"]
                 stype     = s["strike_type"]
                 val       = f"{s['strike_value_pct']:+.3f}%" if s["strike_value_pct"] is not None else "date-dependent"
-                n_tickers = len(s.get("tickers", {}))
+                n_tickers = len(s.get("tenors", {}))
                 strike_rows += (
                     f"<div class=\"conv-row\">"
                     f"<span class=\"conv-key\">{label}</span>"
@@ -505,10 +749,11 @@ with tab_conv:
                 label_visibility="collapsed", key="strike_ticker_sel"
             )
             selected_strike = next(s for s in strikes if s["strike_label"] == selected_strike_label)
-            ticker_df = pd.DataFrame(
-                [(k, v) for k, v in selected_strike["tickers"].items()],
-                columns=["Tenor", "Bloomberg ticker"]
-            )
+            ticker_rows = [
+                (tenor, info.get("ticker", "—"), info.get("index", "—"), info.get("in_scope", False))
+                for tenor, info in selected_strike.get("tenors", {}).items()
+            ]
+            ticker_df = pd.DataFrame(ticker_rows, columns=["Tenor", "Bloomberg ticker", "Index", "In scope"])
             st.dataframe(ticker_df, use_container_width=True, height=340)
 
 # ── Footer ────────────────────────────────────────────────────────────────────

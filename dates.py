@@ -6,137 +6,180 @@ from dateutil.easter import easter
 
 Date: TypeAlias = pd.Timestamp
 
-
 class Tenor:
-    """Tenor string parser and comparator. Internally stores all tenors in month units."""
-
-    MONTH_MAP = dict(D=1/30, W=7/30, M=1, Y=12)
+    # Map to month units
+    MONTH_MAP = dict(
+        D = 1/30,
+        W = 7/30,
+        M = 1,
+        Y = 12,
+    )
 
     def __init__(self, tenor: str):
         self.tenor  = tenor.upper()
         self.months = self.__parse(self.tenor)
-        self.tenor  = self.__month_to_str(self.months)  # normalise e.g. "12M" -> "1Y"
+        self.tenor  = self.__month_to_str(self.months)
         self.amount = float(self.tenor[:-1])
         self.unit   = self.tenor[-1]
 
     def __parse(self, tenor: str) -> float:
-        return float(tenor[:-1]) * self.MONTH_MAP[tenor[-1]]
-
+        tenor_amount = float(tenor[:-1])
+        tenor_unit   = tenor[-1]
+        return tenor_amount * self.MONTH_MAP[tenor_unit]
+    
     def __month_to_str(self, months: float) -> str:
-        """Convert month float back to canonical tenor string."""
         if months % 12 == 0:
             return f"{int(months // 12)}Y"
+        
         elif months % 1 == 0:
             return f"{int(months)}M"
+        
         else:
             weeks = months * 30 / 7
             if weeks % 1 == 0:
                 return f"{int(weeks)}W"
             return f"{int(months * 30)}D"
+        
+    def __add__(self, other: Tenor) -> Tenor:
+        return Tenor(self.__month_to_str(self.months + other.months))
+    
+    def __sub__(self, other: Tenor) -> Tenor:
+        return Tenor(self.__month_to_str(self.months - other.months))
+    
+    def __mul__(self, amount: float) -> Tenor:
+        return Tenor(self.__month_to_str(self.months * amount))
+    
+    def __truediv__(self, amount: float) -> Tenor:
+        return Tenor(self.__month_to_str(self.months / amount))
+    
+    def __lt__(self, other):
+        return self.months < other.months
+    
+    def __le__(self, other):
+        return self.months <= other.months
+    
+    def __gt__(self, other):
+        return self.months > other.months
+    
+    def __ge__(self, other):
+        return self.months >= other.months
+    
+    def __eq__(self, other):
+        return self.months == other.months
+    
+    def __ne__(self, other):
+        return self.months != other.months
+    
+    def __hash__(self):
+        return hash(self.months)
+    
+    def __repr__(self) -> str:
+        return f"Tenor({self.__month_to_str(self.months)})"
 
-    # Arithmetic operators — all return a new Tenor
-    def __add__(self, other):   return Tenor(self.__month_to_str(self.months + other.months))
-    def __sub__(self, other):   return Tenor(self.__month_to_str(self.months - other.months))
-    def __mul__(self, amount):  return Tenor(self.__month_to_str(self.months * amount))
-    def __truediv__(self, amount): return Tenor(self.__month_to_str(self.months / amount))
-
-    # Comparison operators — compare in month units
-    def __lt__(self, other): return self.months < other.months
-    def __le__(self, other): return self.months <= other.months
-    def __gt__(self, other): return self.months > other.months
-    def __ge__(self, other): return self.months >= other.months
-    def __eq__(self, other): return self.months == other.months
-    def __ne__(self, other): return self.months != other.months
-
-    def __repr__(self): return f"Tenor({self.__month_to_str(self.months)})"
-
-
-def target_holidays(year_start: int, year_end: int = None):
+def target_holidays(year_start: int, year_end: int=None):
     """
-    TARGET calendar (TE): 6 fixed holidays per year.
-    Good Friday and Easter Monday are the only moving dates.
+    TE: Trans-European Automated Real-time Gross settlement Express Transfer
+    Standard EUR Interbank settlement calendar.
     """
     year_end = year_end or year_start
     holidays = []
 
     for year in range(year_start, year_end + 1):
         e = pd.to_datetime(easter(year))
-        holidays.extend(sorted([
-            pd.Timestamp(year=year, month=1,  day=1),   # New Year's Day
-            e - tdelta(days=2),                          # Good Friday
-            e + tdelta(days=1),                          # Easter Monday
-            pd.Timestamp(year=year, month=5,  day=1),   # Labour Day
-            pd.Timestamp(year=year, month=12, day=25),  # Christmas
-            pd.Timestamp(year=year, month=12, day=26),  # Boxing Day
-        ]))
+        dates = sorted([
+            pd.Timestamp(year=year, month=1, day=1),   # New Year's Day
+            e - tdelta(days=2),                        # Good Friday
+            e + tdelta(days=1),                        # Easter Monday
+            pd.Timestamp(year=year, month=5, day=1),   # Labour Day
+            pd.Timestamp(year=year, month=12, day=25), # Christmas
+            pd.Timestamp(year=year, month=12, day=26), # Boxing Day
+        ])
+        holidays.extend(dates)
 
     return [np.datetime64(i.date()) for i in holidays]
 
-
 class BusinessDay:
-    """Wraps a date with a TARGET calendar and a default roll convention."""
-
     def __init__(self, date, calendar=np.busdaycalendar(), roll="modifiedfollowing"):
-        self.date     = np.datetime64(pd.to_datetime(date).date())
-        self.roll     = roll
+        self.date = np.datetime64(pd.to_datetime(date).date())
+        self.roll = roll
         self.calendar = calendar
 
     def shift(self, tenor, roll=None):
-        """Shift date forward by a tenor, applying business day adjustment."""
-        roll  = roll or self.roll
+        roll = roll or self.roll
         tenor = Tenor(tenor) if isinstance(tenor, str) else tenor
-
+        
         if tenor.unit in ("M", "Y"):
-            # Add calendar months first, then adjust to nearest business day
-            months = tenor.amount * (1 if tenor.unit == "M" else 12)
-            date   = np.busday_offset(self.date + tdelta(months=months), 0, roll, busdaycal=self.calendar)
+            date = np.busday_offset(self.date + tdelta(months=tenor.amount * (1 if tenor.unit == "M" else 12)), 0, roll, busdaycal=self.calendar)
+        
         elif tenor.unit == "D":
             date = np.busday_offset(self.date, tenor.amount, roll, busdaycal=self.calendar)
+        
         elif tenor.unit == "W":
             date = np.busday_offset(self.date, tenor.amount * 5, roll, busdaycal=self.calendar)
 
         return BusinessDay(date, self.calendar, roll)
-
+    
     def __repr__(self):
         return f"BusinessDay(date={self.date}, roll={self.roll})"
 
+def day_count_fraction(start_date, end_date, convention: str):
+    start = pd.to_datetime(start_date)
+    end   = pd.to_datetime(end_date)
+    conv  = convention.upper()
 
-def day_count_fraction(start_date: Date, end_date: Date, convention: str) -> float:
-    """
-    Compute the day count fraction between two dates under a given convention.
-    Supported: ACT/360, ACT/365, 30U/360 (ISDA), 30E/360 (Eurobond).
-    """
-    start, end = map(pd.to_datetime, (start_date, end_date))
-    conv = convention.upper()
+    start = pd.DatetimeIndex(np.atleast_1d(start))
+    end   = pd.DatetimeIndex(np.atleast_1d(end))
 
     if conv == "ACT/360":
-        return (end - start).days / 360
+        result = (end - start).days / 360
 
     elif conv == "ACT/365":
-        return (end - start).days / 365
+        result = (end - start).days / 365
 
     elif conv in ["30U/360", "30E/360"]:
+        start_day, start_month, start_year = start.day.values, start.month.values, start.year.values
+        end_day, end_month, end_year       = end.day.values,   end.month.values,   end.year.values
+
         if conv == "30U/360":
-            last_day = lambda x: x.month != (x + tdelta(days=1)).month
+            # last calendar day of month, vectorized via days_in_month
+            is_last_day_start = start_day == start.days_in_month.values
+            is_last_day_end   = end_day   == end.days_in_month.values
 
-            if start.month == 2:
-                if end.month == 2 and last_day(start) and last_day(end):
-                    d1 = d2 = 30
-                elif last_day(start):
-                    d1 = 30
-                    d2 = 30 if end.day == 31 else end.day
-                else:
-                    d1, d2 = start.day, end.day
+            d1 = start_day.copy()
+            d2 = end_day.copy()
 
-            elif end.day == 31 and start.day in [30, 31]:
-                d1 = d2 = 30
-            elif start.day == 31:
-                d1, d2 = 30, end.day
-            else:
-                d1, d2 = start.day, end.day
+            feb_start = start_month == 2
 
-        else:  # 30E/360: both days capped at 30 independently, no February special case
-            d1 = 30 if start.day == 31 else start.day
-            d2 = 30 if end.day == 31 else end.day
+            # Case: Feb EOM start AND Feb EOM end -> d1=d2=30
+            cond1 = feb_start & (end_month == 2) & is_last_day_start & is_last_day_end
+            # Case: Feb EOM start only -> d1=30, d2=30 if end.day==31 else end.day
+            cond2 = feb_start & is_last_day_start & ~cond1
+            # Case: not Feb start, end.day==31 and start.day in [30,31] -> d1=d2=30
+            cond3 = (~feb_start) & (end_day == 31) & np.isin(start_day, [30, 31])
+            # Case: not Feb start, start.day==31 -> d1=30, d2=end.day (unless end.day==31, handled by cond3 priority)
+            cond4 = (~feb_start) & (start_day == 31) & ~cond3
 
-        return (360 * (end.year - start.year) + 30 * (end.month - start.month) + (d2 - d1)) / 360
+            d1 = np.select([cond1, cond2, cond3, cond4], [30, 30, 30, 30], default=d1)
+            d2 = np.select(
+                [cond1, cond2 & (end_day == 31), cond2 & (end_day != 31), cond3, cond4],
+                [30,    30,                      end_day,                 30,    end_day],
+                default=d2
+            )
+
+        else:  # 30E/360
+            d1 = np.where(start_day == 31, 30, start_day)
+            d2 = np.where(end_day   == 31, 30, end_day)
+
+        result = (360 * (end_year - start_year) + 30 * (end_month - start_month) + (d2 - d1)) / 360
+
+    result = np.asarray(result, dtype=float)
+    return result if result.size > 1 else result.item()
+
+# Helpers
+def clean_date(date):
+    return np.datetime64(pd.to_datetime(date).date())
+
+def clean_tenor(tenor):
+    return Tenor(tenor) if isinstance(tenor, str) else tenor
+
+
