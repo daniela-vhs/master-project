@@ -2,18 +2,1323 @@
   "surface": "EUR Cap Vol Surface",
   "description": "ATM and OTM EUR cap normal (Bachelier) volatilities in basis points. Underlying: EUR006M Index (Euribor 6M, SemiAnnual reset). Discounting: OIS. Settlement: T+2. Tenors: 3Y\u201330Y (13 tenors). Strikes: absolute rate levels (not spreads), except ATM. ATM strike defined by Bloomberg as the par swap rate for each tenor/date. Data source: Bloomberg BGN (BVOL tickers).",
   "vol_unit": "bp (Normal/Bachelier)",
-  "underlying_index": "EUR006M Index",
-  "discounting": "OIS",
   "settlement": "T+2",
-  "reset_freq": "SemiAnnual",
-  "day_count": "ACT/360",
+  "option_style": "Cap",
+  "discounting": "OIS",
   "date_range": {
-    "start": "2021-06-28",
+    "start": "2021-07-12",
     "end": "2026-06-26",
     "frequency": "Business daily",
     "n_obs": 1305
   },
-  "tenors_years": [
+  "strikes": [
+    {
+      "strike_label": "ATM",
+      "strike_type": "atm",
+      "strike_value_pct": null,
+      "tenors": {
+        "1Y": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNS01 BVOL Curncy"
+        },
+        "18M": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNS04 BVOL Curncy"
+        },
+        "2Y": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNS02 BVOL Curncy"
+        },
+        "3Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNS03 BVOL Curncy"
+        },
+        "4Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNS04 BVOL Curncy"
+        },
+        "5Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNS05 BVOL Curncy"
+        },
+        "6Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNS06 BVOL Curncy"
+        },
+        "7Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNS07 BVOL Curncy"
+        },
+        "8Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNS08 BVOL Curncy"
+        },
+        "9Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNS09 BVOL Curncy"
+        },
+        "10Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNS10 BVOL Curncy"
+        },
+        "12Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNS12 BVOL Curncy"
+        },
+        "15Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNS15 BVOL Curncy"
+        },
+        "20Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNS20 BVOL Curncy"
+        },
+        "25Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNS25 BVOL Curncy"
+        },
+        "30Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNS30 BVOL Curncy"
+        }
+      }
+    },
+    {
+      "strike_label": "-0.50%",
+      "strike_type": "absolute",
+      "strike_value_pct": -0.5,
+      "tenors": {
+        "1Y": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EU0Z0501 BVOL Curncy"
+        },
+        "18M": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EU0Z050F BVOL Curncy"
+        },
+        "2Y": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EU0Z0502 BVOL Curncy"
+        },
+        "3Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z0503 BVOL Curncy"
+        },
+        "4Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z0504 BVOL Curncy"
+        },
+        "5Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z0505 BVOL Curncy"
+        },
+        "6Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z0506 BVOL Curncy"
+        },
+        "7Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z0507 BVOL Curncy"
+        },
+        "8Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z0508 BVOL Curncy"
+        },
+        "9Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z0509 BVOL Curncy"
+        },
+        "10Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z0510 BVOL Curncy"
+        },
+        "12Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z0512 BVOL Curncy"
+        },
+        "15Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z0515 BVOL Curncy"
+        },
+        "20Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z0520 BVOL Curncy"
+        },
+        "25Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z0525 BVOL Curncy"
+        },
+        "30Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z0530 BVOL Curncy"
+        }
+      }
+    },
+    {
+      "strike_label": "-0.25%",
+      "strike_type": "absolute",
+      "strike_value_pct": -0.25,
+      "tenors": {
+        "1Y": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EU0Z2501 BVOL Curncy"
+        },
+        "18M": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EU0Z250F BVOL Curncy"
+        },
+        "2Y": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EU0Z2502 BVOL Curncy"
+        },
+        "3Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z2503 BVOL Curncy"
+        },
+        "4Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z2504 BVOL Curncy"
+        },
+        "5Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z2505 BVOL Curncy"
+        },
+        "6Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z2506 BVOL Curncy"
+        },
+        "7Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z2507 BVOL Curncy"
+        },
+        "8Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z2508 BVOL Curncy"
+        },
+        "9Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z2509 BVOL Curncy"
+        },
+        "10Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z2510 BVOL Curncy"
+        },
+        "12Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z2512 BVOL Curncy"
+        },
+        "15Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z2515 BVOL Curncy"
+        },
+        "20Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z2520 BVOL Curncy"
+        },
+        "25Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z2525 BVOL Curncy"
+        },
+        "30Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z2530 BVOL Curncy"
+        }
+      }
+    },
+    {
+      "strike_label": "-0.125%",
+      "strike_type": "absolute",
+      "strike_value_pct": -0.125,
+      "tenors": {
+        "1Y": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EU0Z1301 BVOL Curncy"
+        },
+        "18M": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EU0Z130F BVOL Curncy"
+        },
+        "2Y": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EU0Z1302 BVOL Curncy"
+        },
+        "3Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z1303 BVOL Curncy"
+        },
+        "4Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z1304 BVOL Curncy"
+        },
+        "5Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z1305 BVOL Curncy"
+        },
+        "6Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z1306 BVOL Curncy"
+        },
+        "7Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z1307 BVOL Curncy"
+        },
+        "8Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z1308 BVOL Curncy"
+        },
+        "9Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z1309 BVOL Curncy"
+        },
+        "10Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z1310 BVOL Curncy"
+        },
+        "12Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z1312 BVOL Curncy"
+        },
+        "15Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z1315 BVOL Curncy"
+        },
+        "20Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z1320 BVOL Curncy"
+        },
+        "25Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z1325 BVOL Curncy"
+        },
+        "30Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EU0Z1330 BVOL Curncy"
+        }
+      }
+    },
+    {
+      "strike_label": "0.00%",
+      "strike_type": "absolute",
+      "strike_value_pct": 0.0,
+      "tenors": {
+        "1Y": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNZO1 BVOL Curncy"
+        },
+        "18M": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNZO1F BVOL Curncy"
+        },
+        "2Y": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNZO2 BVOL Curncy"
+        },
+        "3Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZO3 BVOL Curncy"
+        },
+        "4Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZO4 BVOL Curncy"
+        },
+        "5Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZO5 BVOL Curncy"
+        },
+        "6Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZO6 BVOL Curncy"
+        },
+        "7Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZO7 BVOL Curncy"
+        },
+        "8Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZO8 BVOL Curncy"
+        },
+        "9Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZO9 BVOL Curncy"
+        },
+        "10Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZO10 BVOL Curncy"
+        },
+        "12Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZO12 BVOL Curncy"
+        },
+        "15Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZO15 BVOL Curncy"
+        },
+        "20Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZO20 BVOL Curncy"
+        },
+        "25Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZO25 BVOL Curncy"
+        },
+        "30Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZO30 BVOL Curncy"
+        }
+      }
+    },
+    {
+      "strike_label": "+0.125%",
+      "strike_type": "absolute",
+      "strike_value_pct": 0.125,
+      "tenors": {
+        "1Y": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNVD1 BVOL Curncy"
+        },
+        "18M": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNVD18 BVOL Curncy"
+        },
+        "2Y": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNVD2 BVOL Curncy"
+        },
+        "3Y": {
+          "index": "EUR003M",
+          "in_scope": true,
+          "ticker": "EUNVD3 BVOL Curncy"
+        },
+        "4Y": {
+          "index": "EUR003M",
+          "in_scope": true,
+          "ticker": "EUNVD4 BVOL Curncy"
+        },
+        "5Y": {
+          "index": "EUR003M",
+          "in_scope": true,
+          "ticker": "EUNVD5 BVOL Curncy"
+        },
+        "6Y": {
+          "index": "EUR003M",
+          "in_scope": true,
+          "ticker": "EUNVD6 BVOL Curncy"
+        },
+        "7Y": {
+          "index": "EUR003M",
+          "in_scope": true,
+          "ticker": "EUNVD7 BVOL Curncy"
+        },
+        "8Y": {
+          "index": "EUR003M",
+          "in_scope": true,
+          "ticker": "EUNVD8 BVOL Curncy"
+        },
+        "9Y": {
+          "index": "EUR003M",
+          "in_scope": true,
+          "ticker": "EUNVD9 BVOL Curncy"
+        },
+        "10Y": {
+          "index": "EUR003M",
+          "in_scope": true,
+          "ticker": "EUNVD10 BVOL Curncy"
+        },
+        "12Y": {
+          "index": "EUR003M",
+          "in_scope": true,
+          "ticker": "EUNVD12 BVOL Curncy"
+        },
+        "15Y": {
+          "index": "EUR003M",
+          "in_scope": true,
+          "ticker": "EUNVD15 BVOL Curncy"
+        },
+        "20Y": {
+          "index": "EUR003M",
+          "in_scope": true,
+          "ticker": "EUNVD20 BVOL Curncy"
+        },
+        "25Y": {
+          "index": "EUR003M",
+          "in_scope": true,
+          "ticker": "EUNVD25 BVOL Curncy"
+        },
+        "30Y": {
+          "index": "EUR003M",
+          "in_scope": true,
+          "ticker": "EUNVD30 BVOL Curncy"
+        }
+      }
+    },
+    {
+      "strike_label": "+0.25%",
+      "strike_type": "absolute",
+      "strike_value_pct": 0.25,
+      "tenors": {
+        "1Y": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNZA1 BVOL Curncy"
+        },
+        "18M": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNZA1F BVOL Curncy"
+        },
+        "2Y": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNZA2 BVOL Curncy"
+        },
+        "3Y": {
+          "index": "EUR003M",
+          "in_scope": true,
+          "ticker": "EUNZA3 BVOL Curncy"
+        },
+        "4Y": {
+          "index": "EUR003M",
+          "in_scope": true,
+          "ticker": "EUNZA4 BVOL Curncy"
+        },
+        "5Y": {
+          "index": "EUR003M",
+          "in_scope": true,
+          "ticker": "EUNZA5 BVOL Curncy"
+        },
+        "6Y": {
+          "index": "EUR003M",
+          "in_scope": true,
+          "ticker": "EUNZA6 BVOL Curncy"
+        },
+        "7Y": {
+          "index": "EUR003M",
+          "in_scope": true,
+          "ticker": "EUNZA7 BVOL Curncy"
+        },
+        "8Y": {
+          "index": "EUR003M",
+          "in_scope": true,
+          "ticker": "EUNZA8 BVOL Curncy"
+        },
+        "9Y": {
+          "index": "EUR003M",
+          "in_scope": true,
+          "ticker": "EUNZA9 BVOL Curncy"
+        },
+        "10Y": {
+          "index": "EUR003M",
+          "in_scope": true,
+          "ticker": "EUNZA10 BVOL Curncy"
+        },
+        "12Y": {
+          "index": "EUR003M",
+          "in_scope": true,
+          "ticker": "EUNZA12 BVOL Curncy"
+        },
+        "15Y": {
+          "index": "EUR003M",
+          "in_scope": true,
+          "ticker": "EUNZA15 BVOL Curncy"
+        },
+        "20Y": {
+          "index": "EUR003M",
+          "in_scope": true,
+          "ticker": "EUNZA20 BVOL Curncy"
+        },
+        "25Y": {
+          "index": "EUR003M",
+          "in_scope": true,
+          "ticker": "EUNZA25 BVOL Curncy"
+        },
+        "30Y": {
+          "index": "EUR003M",
+          "in_scope": true,
+          "ticker": "EUNZA30 BVOL Curncy"
+        }
+      }
+    },
+    {
+      "strike_label": "+0.50%",
+      "strike_type": "absolute",
+      "strike_value_pct": 0.5,
+      "tenors": {
+        "1Y": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNZ051 BVOL Curncy"
+        },
+        "18M": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNZ051F BVOL Curncy"
+        },
+        "2Y": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNZ052 BVOL Curncy"
+        },
+        "3Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ053 BVOL Curncy"
+        },
+        "4Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ054 BVOL Curncy"
+        },
+        "5Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ055 BVOL Curncy"
+        },
+        "6Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ056 BVOL Curncy"
+        },
+        "7Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ057 BVOL Curncy"
+        },
+        "8Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ058 BVOL Curncy"
+        },
+        "9Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ059 BVOL Curncy"
+        },
+        "10Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ0510 BVOL Curncy"
+        },
+        "12Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ0512 BVOL Curncy"
+        },
+        "15Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ0515 BVOL Curncy"
+        },
+        "20Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ0520 BVOL Curncy"
+        },
+        "25Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ0525 BVOL Curncy"
+        },
+        "30Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ0530 BVOL Curncy"
+        }
+      }
+    },
+    {
+      "strike_label": "+1.00%",
+      "strike_type": "absolute",
+      "strike_value_pct": 1.0,
+      "tenors": {
+        "1Y": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNZ101 BVOL Curncy"
+        },
+        "18M": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNZ101F BVOL Curncy"
+        },
+        "2Y": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNZ102 BVOL Curncy"
+        },
+        "3Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ103 BVOL Curncy"
+        },
+        "4Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ104 BVOL Curncy"
+        },
+        "5Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ105 BVOL Curncy"
+        },
+        "6Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ106 BVOL Curncy"
+        },
+        "7Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ107 BVOL Curncy"
+        },
+        "8Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ108 BVOL Curncy"
+        },
+        "9Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ109 BVOL Curncy"
+        },
+        "10Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ1010 BVOL Curncy"
+        },
+        "12Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ1012 BVOL Curncy"
+        },
+        "15Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ1015 BVOL Curncy"
+        },
+        "20Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ1020 BVOL Curncy"
+        },
+        "25Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ1025 BVOL Curncy"
+        },
+        "30Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ1030 BVOL Curncy"
+        }
+      }
+    },
+    {
+      "strike_label": "+1.50%",
+      "strike_type": "absolute",
+      "strike_value_pct": 1.5,
+      "tenors": {
+        "1Y": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNZ151 BVOL Curncy"
+        },
+        "18M": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNZ151F BVOL Curncy"
+        },
+        "2Y": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNZ152 BVOL Curncy"
+        },
+        "3Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ153 BVOL Curncy"
+        },
+        "4Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ154 BVOL Curncy"
+        },
+        "5Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ155 BVOL Curncy"
+        },
+        "6Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ156 BVOL Curncy"
+        },
+        "7Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ157 BVOL Curncy"
+        },
+        "8Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ158 BVOL Curncy"
+        },
+        "9Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ159 BVOL Curncy"
+        },
+        "10Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ1510 BVOL Curncy"
+        },
+        "12Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ1512 BVOL Curncy"
+        },
+        "15Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ1515 BVOL Curncy"
+        },
+        "20Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ1520 BVOL Curncy"
+        },
+        "25Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ1525 BVOL Curncy"
+        },
+        "30Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ1530 BVOL Curncy"
+        }
+      }
+    },
+    {
+      "strike_label": "+2.00%",
+      "strike_type": "absolute",
+      "strike_value_pct": 2.0,
+      "tenors": {
+        "1Y": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNZ201 BVOL Curncy"
+        },
+        "18M": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNZ201F BVOL Curncy"
+        },
+        "2Y": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNZ202 BVOL Curncy"
+        },
+        "3Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ203 BVOL Curncy"
+        },
+        "4Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ204 BVOL Curncy"
+        },
+        "5Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ205 BVOL Curncy"
+        },
+        "6Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ206 BVOL Curncy"
+        },
+        "7Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ207 BVOL Curncy"
+        },
+        "8Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ208 BVOL Curncy"
+        },
+        "9Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ209 BVOL Curncy"
+        },
+        "10Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ2010 BVOL Curncy"
+        },
+        "12Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ2012 BVOL Curncy"
+        },
+        "15Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ2015 BVOL Curncy"
+        },
+        "20Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ2020 BVOL Curncy"
+        },
+        "25Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ2025 BVOL Curncy"
+        },
+        "30Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ2030 BVOL Curncy"
+        }
+      }
+    },
+    {
+      "strike_label": "+2.50%",
+      "strike_type": "absolute",
+      "strike_value_pct": 2.5,
+      "tenors": {
+        "1Y": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNZ251 BVOL Curncy"
+        },
+        "18M": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNZ251F BVOL Curncy"
+        },
+        "2Y": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNZ252 BVOL Curncy"
+        },
+        "3Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ253 BVOL Curncy"
+        },
+        "4Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ254 BVOL Curncy"
+        },
+        "5Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ255 BVOL Curncy"
+        },
+        "6Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ256 BVOL Curncy"
+        },
+        "7Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ257 BVOL Curncy"
+        },
+        "8Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ258 BVOL Curncy"
+        },
+        "9Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ259 BVOL Curncy"
+        },
+        "10Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ2510 BVOL Curncy"
+        },
+        "12Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ2512 BVOL Curncy"
+        },
+        "15Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ2515 BVOL Curncy"
+        },
+        "20Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ2520 BVOL Curncy"
+        },
+        "25Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ2525 BVOL Curncy"
+        },
+        "30Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ2530 BVOL Curncy"
+        }
+      }
+    },
+    {
+      "strike_label": "+3.00%",
+      "strike_type": "absolute",
+      "strike_value_pct": 3.0,
+      "tenors": {
+        "1Y": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNZ301 BVOL Curncy"
+        },
+        "18M": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNZ301F BVOL Curncy"
+        },
+        "2Y": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNZ302 BVOL Curncy"
+        },
+        "3Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ303 BVOL Curncy"
+        },
+        "4Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ304 BVOL Curncy"
+        },
+        "5Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ305 BVOL Curncy"
+        },
+        "6Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ306 BVOL Curncy"
+        },
+        "7Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ307 BVOL Curncy"
+        },
+        "8Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ308 BVOL Curncy"
+        },
+        "9Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ309 BVOL Curncy"
+        },
+        "10Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ3010 BVOL Curncy"
+        },
+        "12Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ3012 BVOL Curncy"
+        },
+        "15Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ3015 BVOL Curncy"
+        },
+        "20Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ3020 BVOL Curncy"
+        },
+        "25Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ3025 BVOL Curncy"
+        },
+        "30Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ3030 BVOL Curncy"
+        }
+      }
+    },
+    {
+      "strike_label": "+4.00%",
+      "strike_type": "absolute",
+      "strike_value_pct": 4.0,
+      "tenors": {
+        "1Y": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNZ401 BVOL Curncy"
+        },
+        "18M": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNZ401F BVOL Curncy"
+        },
+        "2Y": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNZ402 BVOL Curncy"
+        },
+        "3Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ403 BVOL Curncy"
+        },
+        "4Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ404 BVOL Curncy"
+        },
+        "5Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ405 BVOL Curncy"
+        },
+        "6Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ406 BVOL Curncy"
+        },
+        "7Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ407 BVOL Curncy"
+        },
+        "8Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ408 BVOL Curncy"
+        },
+        "9Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ409 BVOL Curncy"
+        },
+        "10Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ4010 BVOL Curncy"
+        },
+        "12Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ4012 BVOL Curncy"
+        },
+        "15Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ4015 BVOL Curncy"
+        },
+        "20Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ4020 BVOL Curncy"
+        },
+        "25Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ4025 BVOL Curncy"
+        },
+        "30Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ4030 BVOL Curncy"
+        }
+      }
+    },
+    {
+      "strike_label": "+5.00%",
+      "strike_type": "absolute",
+      "strike_value_pct": 5.0,
+      "tenors": {
+        "1Y": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNZ501 BVOL Curncy"
+        },
+        "18M": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNZ501F BVOL Curncy"
+        },
+        "2Y": {
+          "index": "EUR003M",
+          "in_scope": false,
+          "ticker": "EUNZ502 BVOL Curncy"
+        },
+        "3Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ503 BVOL Curncy"
+        },
+        "4Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ504 BVOL Curncy"
+        },
+        "5Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ505 BVOL Curncy"
+        },
+        "6Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ506 BVOL Curncy"
+        },
+        "7Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ507 BVOL Curncy"
+        },
+        "8Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ508 BVOL Curncy"
+        },
+        "9Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ509 BVOL Curncy"
+        },
+        "10Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ5010 BVOL Curncy"
+        },
+        "12Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ5012 BVOL Curncy"
+        },
+        "15Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ5015 BVOL Curncy"
+        },
+        "20Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ5020 BVOL Curncy"
+        },
+        "25Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ5025 BVOL Curncy"
+        },
+        "30Y": {
+          "index": "EUR006M",
+          "in_scope": true,
+          "ticker": "EUNZ5030 BVOL Curncy"
+        }
+      }
+    }
+  ],
+  "tenors_years_in_scope": [
     3,
     4,
     5,
@@ -28,306 +1333,40 @@
     25,
     30
   ],
-  "strikes": [
-    {
-      "strike_label": "ATM",
-      "strike_type": "atm",
-      "strike_value_pct": null,
-      "tickers": {
-        "3Y": "EUNS03 BVOL Curncy",
-        "4Y": "EUNS04 BVOL Curncy",
-        "5Y": "EUNS05 BVOL Curncy",
-        "6Y": "EUNS06 BVOL Curncy",
-        "7Y": "EUNS07 BVOL Curncy",
-        "8Y": "EUNS08 BVOL Curncy",
-        "9Y": "EUNS09 BVOL Curncy",
-        "10Y": "EUNS10 BVOL Curncy",
-        "12Y": "EUNS12 BVOL Curncy",
-        "15Y": "EUNS15 BVOL Curncy",
-        "20Y": "EUNS20 BVOL Curncy",
-        "25Y": "EUNS25 BVOL Curncy",
-        "30Y": "EUNS30 BVOL Curncy"
-      }
+  "tenors_out_of_scope": [
+    "1Y",
+    "18M",
+    "2Y"
+  ],
+  "index_rule": "Two underlying indices coexist in this surface: EUR006M and EUR003M. Full conventions for each are given in 'underlying_indices'; they are identical except for index name and pay/reset frequency (SemiAnnual vs Quarterly). Assignment rule: tenors 1Y, 18M, 2Y use EUR003M across all strikes (short-tenor 6M caps are illiquid/degenerate - excluded from thesis scope). From 3Y onward, EUR006M applies for most strikes, EXCEPT strikes +0.125% and +0.25%, which remain EUR003M across the entire term structure 1Y-30Y with no switch to EUR006M.",
+  "underlying_indices": {
+    "EUR006M": {
+      "index": "EUR006M Index",
+      "pay_freq": "SemiAnnual",
+      "reset_freq": "SemiAnnual",
+      "day_count": "ACT/360",
+      "bus_adj": "Modified Following",
+      "adjust": "Accrual and Pay Dates",
+      "roll_conv": "Backward (EOM)",
+      "calc_cal": "TE",
+      "fixing_cal": "TE",
+      "pay_delay": "0 Business Days",
+      "fixing_lag": "2 Business Days",
+      "reset_position": "In Advance"
     },
-    {
-      "strike_label": "-0.50%",
-      "strike_type": "absolute",
-      "strike_value_pct": -0.5,
-      "tickers": {
-        "3Y": "EU0Z0503 BVOL Curncy",
-        "4Y": "EU0Z0504 BVOL Curncy",
-        "5Y": "EU0Z0505 BVOL Curncy",
-        "6Y": "EU0Z0506 BVOL Curncy",
-        "7Y": "EU0Z0507 BVOL Curncy",
-        "8Y": "EU0Z0508 BVOL Curncy",
-        "9Y": "EU0Z0509 BVOL Curncy",
-        "10Y": "EU0Z0510 BVOL Curncy",
-        "12Y": "EU0Z0512 BVOL Curncy",
-        "15Y": "EU0Z0515 BVOL Curncy",
-        "20Y": "EU0Z0520 BVOL Curncy",
-        "25Y": "EU0Z0525 BVOL Curncy",
-        "30Y": "EU0Z0530 BVOL Curncy"
-      }
-    },
-    {
-      "strike_label": "-0.25%",
-      "strike_type": "absolute",
-      "strike_value_pct": -0.25,
-      "tickers": {
-        "3Y": "EU0Z2503 BVOL Curncy",
-        "4Y": "EU0Z2504 BVOL Curncy",
-        "5Y": "EU0Z2505 BVOL Curncy",
-        "6Y": "EU0Z2506 BVOL Curncy",
-        "7Y": "EU0Z2507 BVOL Curncy",
-        "8Y": "EU0Z2508 BVOL Curncy",
-        "9Y": "EU0Z2509 BVOL Curncy",
-        "10Y": "EU0Z2510 BVOL Curncy",
-        "12Y": "EU0Z2512 BVOL Curncy",
-        "15Y": "EU0Z2515 BVOL Curncy",
-        "20Y": "EU0Z2520 BVOL Curncy",
-        "25Y": "EU0Z2525 BVOL Curncy",
-        "30Y": "EU0Z2530 BVOL Curncy"
-      }
-    },
-    {
-      "strike_label": "-0.125%",
-      "strike_type": "absolute",
-      "strike_value_pct": -0.125,
-      "tickers": {
-        "3Y": "EU0Z1303 BVOL Curncy",
-        "4Y": "EU0Z1304 BVOL Curncy",
-        "5Y": "EU0Z1305 BVOL Curncy",
-        "6Y": "EU0Z1306 BVOL Curncy",
-        "7Y": "EU0Z1307 BVOL Curncy",
-        "8Y": "EU0Z1308 BVOL Curncy",
-        "9Y": "EU0Z1309 BVOL Curncy",
-        "10Y": "EU0Z1310 BVOL Curncy",
-        "12Y": "EU0Z1312 BVOL Curncy",
-        "15Y": "EU0Z1315 BVOL Curncy",
-        "20Y": "EU0Z1320 BVOL Curncy",
-        "25Y": "EU0Z1325 BVOL Curncy",
-        "30Y": "EU0Z1330 BVOL Curncy"
-      }
-    },
-    {
-      "strike_label": "0.00%",
-      "strike_type": "absolute",
-      "strike_value_pct": 0.0,
-      "tickers": {
-        "3Y": "EUNZO3 BVOL Curncy",
-        "4Y": "EUNZO4 BVOL Curncy",
-        "5Y": "EUNZO5 BVOL Curncy",
-        "6Y": "EUNZO6 BVOL Curncy",
-        "7Y": "EUNZO7 BVOL Curncy",
-        "8Y": "EUNZO8 BVOL Curncy",
-        "9Y": "EUNZO9 BVOL Curncy",
-        "10Y": "EUNZO10 BVOL Curncy",
-        "12Y": "EUNZO12 BVOL Curncy",
-        "15Y": "EUNZO15 BVOL Curncy",
-        "20Y": "EUNZO20 BVOL Curncy",
-        "25Y": "EUNZO25 BVOL Curncy",
-        "30Y": "EUNZO30 BVOL Curncy"
-      }
-    },
-    {
-      "strike_label": "+0.125%",
-      "strike_type": "absolute",
-      "strike_value_pct": 0.125,
-      "tickers": {
-        "3Y": "EUNVD3 BVOL Curncy",
-        "4Y": "EUNVD4 BVOL Curncy",
-        "5Y": "EUNVD5 BVOL Curncy",
-        "6Y": "EUNVD6 BVOL Curncy",
-        "7Y": "EUNVD7 BVOL Curncy",
-        "8Y": "EUNVD8 BVOL Curncy",
-        "9Y": "EUNVD9 BVOL Curncy",
-        "10Y": "EUNVD10 BVOL Curncy",
-        "12Y": "EUNVD12 BVOL Curncy",
-        "15Y": "EUNVD15 BVOL Curncy",
-        "20Y": "EUNVD20 BVOL Curncy",
-        "25Y": "EUNVD25 BVOL Curncy",
-        "30Y": "EUNVD30 BVOL Curncy"
-      }
-    },
-    {
-      "strike_label": "+0.25%",
-      "strike_type": "absolute",
-      "strike_value_pct": 0.25,
-      "tickers": {
-        "3Y": "EUNZA3 BVOL Curncy",
-        "4Y": "EUNZA4 BVOL Curncy",
-        "5Y": "EUNZA5 BVOL Curncy",
-        "6Y": "EUNZA6 BVOL Curncy",
-        "7Y": "EUNZA7 BVOL Curncy",
-        "8Y": "EUNZA8 BVOL Curncy",
-        "9Y": "EUNZA9 BVOL Curncy",
-        "10Y": "EUNZA10 BVOL Curncy",
-        "12Y": "EUNZA12 BVOL Curncy",
-        "15Y": "EUNZA15 BVOL Curncy",
-        "20Y": "EUNZA20 BVOL Curncy",
-        "25Y": "EUNZA25 BVOL Curncy",
-        "30Y": "EUNZA30 BVOL Curncy"
-      }
-    },
-    {
-      "strike_label": "+0.50%",
-      "strike_type": "absolute",
-      "strike_value_pct": 0.5,
-      "tickers": {
-        "3Y": "EUNZ053 BVOL Curncy",
-        "4Y": "EUNZ054 BVOL Curncy",
-        "5Y": "EUNZ055 BVOL Curncy",
-        "6Y": "EUNZ056 BVOL Curncy",
-        "7Y": "EUNZ057 BVOL Curncy",
-        "8Y": "EUNZ058 BVOL Curncy",
-        "9Y": "EUNZ059 BVOL Curncy",
-        "10Y": "EUNZ0510 BVOL Curncy",
-        "12Y": "EUNZ0512 BVOL Curncy",
-        "15Y": "EUNZ0515 BVOL Curncy",
-        "20Y": "EUNZ0520 BVOL Curncy",
-        "25Y": "EUNZ0525 BVOL Curncy",
-        "30Y": "EUNZ0530 BVOL Curncy"
-      }
-    },
-    {
-      "strike_label": "+1.00%",
-      "strike_type": "absolute",
-      "strike_value_pct": 1.0,
-      "tickers": {
-        "3Y": "EUNZ103 BVOL Curncy",
-        "4Y": "EUNZ104 BVOL Curncy",
-        "5Y": "EUNZ105 BVOL Curncy",
-        "6Y": "EUNZ106 BVOL Curncy",
-        "7Y": "EUNZ107 BVOL Curncy",
-        "8Y": "EUNZ108 BVOL Curncy",
-        "9Y": "EUNZ109 BVOL Curncy",
-        "10Y": "EUNZ1010 BVOL Curncy",
-        "12Y": "EUNZ1012 BVOL Curncy",
-        "15Y": "EUNZ1015 BVOL Curncy",
-        "20Y": "EUNZ1020 BVOL Curncy",
-        "25Y": "EUNZ1025 BVOL Curncy",
-        "30Y": "EUNZ1030 BVOL Curncy"
-      }
-    },
-    {
-      "strike_label": "+1.50%",
-      "strike_type": "absolute",
-      "strike_value_pct": 1.5,
-      "tickers": {
-        "3Y": "EUNZ153 BVOL Curncy",
-        "4Y": "EUNZ154 BVOL Curncy",
-        "5Y": "EUNZ155 BVOL Curncy",
-        "6Y": "EUNZ156 BVOL Curncy",
-        "7Y": "EUNZ157 BVOL Curncy",
-        "8Y": "EUNZ158 BVOL Curncy",
-        "9Y": "EUNZ159 BVOL Curncy",
-        "10Y": "EUNZ1510 BVOL Curncy",
-        "12Y": "EUNZ1512 BVOL Curncy",
-        "15Y": "EUNZ1515 BVOL Curncy",
-        "20Y": "EUNZ1520 BVOL Curncy",
-        "25Y": "EUNZ1525 BVOL Curncy",
-        "30Y": "EUNZ1530 BVOL Curncy"
-      }
-    },
-    {
-      "strike_label": "+2.00%",
-      "strike_type": "absolute",
-      "strike_value_pct": 2.0,
-      "tickers": {
-        "3Y": "EUNZ203 BVOL Curncy",
-        "4Y": "EUNZ204 BVOL Curncy",
-        "5Y": "EUNZ205 BVOL Curncy",
-        "6Y": "EUNZ206 BVOL Curncy",
-        "7Y": "EUNZ207 BVOL Curncy",
-        "8Y": "EUNZ208 BVOL Curncy",
-        "9Y": "EUNZ209 BVOL Curncy",
-        "10Y": "EUNZ2010 BVOL Curncy",
-        "12Y": "EUNZ2012 BVOL Curncy",
-        "15Y": "EUNZ2015 BVOL Curncy",
-        "20Y": "EUNZ2020 BVOL Curncy",
-        "25Y": "EUNZ2025 BVOL Curncy",
-        "30Y": "EUNZ2030 BVOL Curncy"
-      }
-    },
-    {
-      "strike_label": "+2.50%",
-      "strike_type": "absolute",
-      "strike_value_pct": 2.5,
-      "tickers": {
-        "3Y": "EUNZ253 BVOL Curncy",
-        "4Y": "EUNZ254 BVOL Curncy",
-        "5Y": "EUNZ255 BVOL Curncy",
-        "6Y": "EUNZ256 BVOL Curncy",
-        "7Y": "EUNZ257 BVOL Curncy",
-        "8Y": "EUNZ258 BVOL Curncy",
-        "9Y": "EUNZ259 BVOL Curncy",
-        "10Y": "EUNZ2510 BVOL Curncy",
-        "12Y": "EUNZ2512 BVOL Curncy",
-        "15Y": "EUNZ2515 BVOL Curncy",
-        "20Y": "EUNZ2520 BVOL Curncy",
-        "25Y": "EUNZ2525 BVOL Curncy",
-        "30Y": "EUNZ2530 BVOL Curncy"
-      }
-    },
-    {
-      "strike_label": "+3.00%",
-      "strike_type": "absolute",
-      "strike_value_pct": 3.0,
-      "tickers": {
-        "3Y": "EUNZ303 BVOL Curncy",
-        "4Y": "EUNZ304 BVOL Curncy",
-        "5Y": "EUNZ305 BVOL Curncy",
-        "6Y": "EUNZ306 BVOL Curncy",
-        "7Y": "EUNZ307 BVOL Curncy",
-        "8Y": "EUNZ308 BVOL Curncy",
-        "9Y": "EUNZ309 BVOL Curncy",
-        "10Y": "EUNZ3010 BVOL Curncy",
-        "12Y": "EUNZ3012 BVOL Curncy",
-        "15Y": "EUNZ3015 BVOL Curncy",
-        "20Y": "EUNZ3020 BVOL Curncy",
-        "25Y": "EUNZ3025 BVOL Curncy",
-        "30Y": "EUNZ3030 BVOL Curncy"
-      }
-    },
-    {
-      "strike_label": "+4.00%",
-      "strike_type": "absolute",
-      "strike_value_pct": 4.0,
-      "tickers": {
-        "3Y": "EUNZ403 BVOL Curncy",
-        "4Y": "EUNZ404 BVOL Curncy",
-        "5Y": "EUNZ405 BVOL Curncy",
-        "6Y": "EUNZ406 BVOL Curncy",
-        "7Y": "EUNZ407 BVOL Curncy",
-        "8Y": "EUNZ408 BVOL Curncy",
-        "9Y": "EUNZ409 BVOL Curncy",
-        "10Y": "EUNZ4010 BVOL Curncy",
-        "12Y": "EUNZ4012 BVOL Curncy",
-        "15Y": "EUNZ4015 BVOL Curncy",
-        "20Y": "EUNZ4020 BVOL Curncy",
-        "25Y": "EUNZ4025 BVOL Curncy",
-        "30Y": "EUNZ4030 BVOL Curncy"
-      }
-    },
-    {
-      "strike_label": "+5.00%",
-      "strike_type": "absolute",
-      "strike_value_pct": 5.0,
-      "tickers": {
-        "3Y": "EUNZ503 BVOL Curncy",
-        "4Y": "EUNZ504 BVOL Curncy",
-        "5Y": "EUNZ505 BVOL Curncy",
-        "6Y": "EUNZ506 BVOL Curncy",
-        "7Y": "EUNZ507 BVOL Curncy",
-        "8Y": "EUNZ508 BVOL Curncy",
-        "9Y": "EUNZ509 BVOL Curncy",
-        "10Y": "EUNZ5010 BVOL Curncy",
-        "12Y": "EUNZ5012 BVOL Curncy",
-        "15Y": "EUNZ5015 BVOL Curncy",
-        "20Y": "EUNZ5020 BVOL Curncy",
-        "25Y": "EUNZ5025 BVOL Curncy",
-        "30Y": "EUNZ5030 BVOL Curncy"
-      }
+    "EUR003M": {
+      "index": "EUR003M Index",
+      "pay_freq": "Quarterly",
+      "reset_freq": "Quarterly",
+      "day_count": "ACT/360",
+      "bus_adj": "Modified Following",
+      "adjust": "Accrual and Pay Dates",
+      "roll_conv": "Backward (EOM)",
+      "calc_cal": "TE",
+      "fixing_cal": "TE",
+      "pay_delay": "0 Business Days",
+      "fixing_lag": "2 Business Days",
+      "reset_position": "In Advance"
     }
-  ]
+  }
 }
