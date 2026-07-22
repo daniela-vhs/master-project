@@ -17,6 +17,15 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
 html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+html, body,
+[data-testid="stAppViewContainer"],
+[data-testid="stHeader"],
+[data-testid="stSidebar"],
+.main, .stApp {
+    background-color: #ffffff !important;
+    color: #111827 !important;
+    color-scheme: light !important;
+}
 .block-container { padding: 2.5rem 2rem 1.5rem; max-width: 1600px; }
 header[data-testid="stHeader"] { background: transparent; }
 div[data-testid="stDecoration"] { display: none; }
@@ -178,7 +187,7 @@ with tab_curves:
         )
 
         fig = go.Figure()
-        colors = {"ESTR": "#1e3a8a", "EURIBOR6M": "#b45309"}
+        colors = {"ESTR": "#1E90FF", "EURIBOR6M": "#FF6347"}
         labels = {"ESTR": "ESTR OIS", "EURIBOR6M": "Euribor 6M IRS"}
         curves_to_plot = ["ESTR", "EURIBOR6M"] if curve_choice == "Both" else [curve_choice]
 
@@ -234,7 +243,7 @@ with tab_curves:
 
         fig3 = go.Figure(go.Scatter(
             x=hist["TradeDate"], y=hist["ZeroRate"],
-            mode="lines", line=dict(color=colors.get(hist_curve, "#1e3a8a"), width=1.5),
+            mode="lines", line=dict(color=colors.get(hist_curve, "#1E90FF"), width=1.5),
             hovertemplate="%{x|%d %b %Y}: %{y:.4f}%<extra></extra>"
         ))
         fig3.update_layout(
@@ -264,12 +273,12 @@ with tab_curves:
         figv = make_subplots(specs=[[{"secondary_y": True}]])
         figv.add_trace(go.Scatter(
             x=agg["TradeDate"], y=agg["EstrError"], name="ESTR (left)",
-            mode="lines", line=dict(color="#1e3a8a", width=1.2),
+            mode="lines", line=dict(color="#1E90FF", width=1.2),
             hovertemplate="%{x|%d %b %Y}: %{y:.5f} bp<extra>ESTR</extra>"
         ), secondary_y=False)
         figv.add_trace(go.Scatter(
             x=agg["TradeDate"], y=agg["EurError"], name="Euribor 6M (right)",
-            mode="lines", line=dict(color="#b45309", width=1.2),
+            mode="lines", line=dict(color="#FF6347", width=1.2),
             hovertemplate="%{x|%d %b %Y}: %{y:.5f} bp<extra>Euribor 6M</extra>"
         ), secondary_y=True)
 
@@ -549,7 +558,7 @@ with tab_hw:
 
     hw_calib_sorted = hw_calib.sort_values("TradeDate").copy()
     hw_calib_sorted["sigma_bp"] = hw_calib_sorted["sigma"] * 10000
-    bound_colors = np.where(hw_calib_sorted["AtBound"], "#dc2626", "#1e3a8a")
+    bound_colors = np.where(hw_calib_sorted["AtBound"], "#FF6347", "#1E90FF")
 
     fig_a = go.Figure()
     fig_a.add_trace(go.Scatter(
@@ -597,7 +606,7 @@ with tab_hw:
     st.markdown('<span class="section-label">Residual calibration error (SSE)</span>', unsafe_allow_html=True)
     fig_e = go.Figure(go.Scatter(
         x=hw_calib_sorted["TradeDate"], y=hw_calib_sorted["ResidualError"],
-        mode="lines", line=dict(color="#374151", width=1),
+        mode="lines", line=dict(color="#1E90FF", width=1),
         hovertemplate="%{x|%d %b %Y}: %{y:.2e}<extra></extra>"
     ))
     fig_e.add_vline(x=selected_date_hw, line=dict(color="#9ca3af", width=1, dash="dot"))
