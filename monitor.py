@@ -411,7 +411,7 @@ with tab_vols:
     )
     fig3d.update_layout(
         height=420, margin=dict(l=0, r=0, t=30, b=0),
-        paper_bgcolor="white", font=dict(family="Inter", size=10),
+        paper_bgcolor="white", font=dict(family="Inter, sans-serif", size=10),
         scene=scene_common, scene2=scene_common
     )
 
@@ -419,6 +419,12 @@ with tab_vols:
     # JS listener that mirrors camera rotation/zoom/pan between the two scenes.
     div_id = "vol3d_sync"
     plot_html = fig3d.to_html(include_plotlyjs="cdn", full_html=False, div_id=div_id)
+    font_import = """
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+    body { font-family: 'Inter', sans-serif; margin: 0; }
+    </style>
+    """
     sync_script = f"""
     <script>
     (function() {{
@@ -443,7 +449,7 @@ with tab_vols:
     }})();
     </script>
     """
-    components.html(plot_html + sync_script, height=440, scrolling=False)
+    components.html(font_import + plot_html + sync_script, height=440, scrolling=False)
 
     # ── Historical evolution: flat vs stripped, per tenor & strike ─────────
     st.markdown("<div style='margin-top:0.5rem;'></div>", unsafe_allow_html=True)
