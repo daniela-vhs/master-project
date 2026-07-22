@@ -475,12 +475,12 @@ with tab_vols:
     fig_ev = go.Figure()
     fig_ev.add_trace(go.Scatter(
         x=flat_hist["Date"], y=flat_hist["Vol"], name="Flat",
-        mode="lines", line=dict(color="#b45309", width=1.3),
+        mode="lines", line=dict(color="#FF6347", width=1.3),
         hovertemplate="%{x|%d %b %Y}: %{y:.1f} bp<extra>Flat</extra>"
     ))
     fig_ev.add_trace(go.Scatter(
         x=strip_x, y=strip_y, name="Stripped",
-        mode="lines", line=dict(color="#1e3a8a", width=1.3),
+        mode="lines", line=dict(color="#1E90FF", width=1.3),
         hovertemplate="%{x|%d %b %Y}: %{y:.1f} bp<extra>Stripped</extra>"
     ))
     fig_ev.update_layout(
@@ -513,7 +513,7 @@ with tab_vols:
         st.markdown('<span class="section-label">Non-ATM — max error</span>', unsafe_allow_html=True)
         fign = go.Figure(go.Scatter(
             x=agg_non_atm["Date"], y=agg_non_atm["RepricingError"],
-            mode="lines", line=dict(color="#1e3a8a", width=1.2),
+            mode="lines", line=dict(color="#1E90FF", width=1.2),
             hovertemplate="%{x|%d %b %Y}: %{y:.2e} bp<extra></extra>"
         ))
         fign.update_layout(
@@ -529,7 +529,7 @@ with tab_vols:
         st.markdown('<span class="section-label">ATM — max error</span>', unsafe_allow_html=True)
         figa = go.Figure(go.Scatter(
             x=agg_atm["Date"], y=agg_atm["RepricingError"],
-            mode="lines", line=dict(color="#b45309", width=1.2),
+            mode="lines", line=dict(color="#FF6347", width=1.2),
             hovertemplate="%{x|%d %b %Y}: %{y:.3f} bp<extra></extra>"
         ))
         figa.update_layout(
