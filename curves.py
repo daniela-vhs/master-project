@@ -32,52 +32,6 @@ calendar   = target_holidays(
              )
 buscal     = np.busdaycalendar(holidays=calendar)
 
-# def schedule_generation(
-#         trade_date: Date,
-#         tenor: Tenor,
-#         frequency: str="Annual",
-#         fixing_lag: str="2 Business Days",
-#         pay_delay: str="1 Business Day",
-#         cal: np.busdaycalendar=buscal,
-#         include_tenor: bool=False,
-#     ):
-#     """
-#     Generate a payment schedule for a swap or cap leg.
-#     Periods are built backward from maturity to avoid stub issues.
-#     Vectorized business day adjustment via np.busday_offset.
-#     Returns: DataFrame with FixingDate, AccrualStart, AccrualEnd, PaymentDate.
-#     """
-#     trade_date  = BusinessDay(trade_date, calendar=cal)
-#     settle_date = trade_date.shift("2D", "following")
-#     tenor       = Tenor(tenor) if isinstance(tenor, str) else tenor
-#     freq_months = 12 if frequency == "Annual" else 6
-#     n_coupons   = int(np.ceil(tenor.months / freq_months))
-#     maturity    = BusinessDay(settle_date.date + tdelta(months=int(tenor.months)), calendar=cal)
-#     pay_delay   = int(pay_delay[0])
-#     fix_lag     = -int(fixing_lag[0])
-
-#     # Build period end dates by stepping backward from maturity
-#     period_end = []
-#     i = 0
-
-#     while i < n_coupons:
-#         shift = tdelta(months=i * (12 if frequency == "Annual" else 6))
-#         period_end.append(maturity.date - shift)
-#         i += 1
-
-#     period_end.sort()
-#     period_end   = np.busday_offset(period_end, 0, "modifiedfollowing", busdaycal=cal)
-#     period_start = np.concatenate([[np.datetime64(settle_date.date, 'D')], period_end[:-1]])
-#     pay_date     = np.busday_offset(period_end, pay_delay, "modifiedfollowing", busdaycal=cal)
-#     fix_date     = np.busday_offset(period_start, fix_lag, "modifiedfollowing", busdaycal=cal)
-
-#     calendar = pd.DataFrame(np.column_stack((fix_date, period_start, period_end, pay_date)), columns=["FixingDate", "AccrualStart", "AccrualEnd", "PaymentDate"])
-
-#     if include_tenor:
-#         calendar["Tenor"] = (calendar.AccrualEnd - trade_date.date).apply(lambda x: Tenor(f"{np.round(x.days / 365, 1)}Y").tenor)
-
-#     return calendar
-
 def schedule_generation(
         trade_date: Date,
         tenor: Tenor,
@@ -100,22 +54,24 @@ def schedule_generation(
     n_coupons   = int(np.ceil(tenor.months / freq_months))
     pay_delay   = int(pay_delay[0])
     fix_lag     = -int(fixing_lag[0])
-
-    # Calendar
-    settle_ts  = pd.Timestamp(settle_date.date)
-    period_end = [np.datetime64((settle_ts + tdelta(months=(i + 1) * freq_months)).date())
-                for i in range(n_coupons)]
-    period_end = np.busday_offset(period_end, 0, "modifiedfollowing", busdaycal=cal)
-
+ 
+    # Calendar — anchor backward from the TRUE maturity so non-exact-multiple tenors
+    # (15M, 18M, 21M under Annual/SemiAnnual freq) get a short front stub instead of
+    # silently rounding up to the next freq_months multiple.
+    maturity_ts = pd.Timestamp(settle_date.date) + tdelta(months=int(tenor.months))
+    period_end  = [np.datetime64((maturity_ts - tdelta(months=i * freq_months)).date())
+                for i in range(n_coupons - 1, -1, -1)]
+    period_end  = np.busday_offset(period_end, 0, "modifiedfollowing", busdaycal=cal)
+ 
     period_start = np.concatenate([[np.datetime64(settle_date.date, 'D')], period_end[:-1]])
     pay_date     = np.busday_offset(period_end, pay_delay, "modifiedfollowing", busdaycal=cal)
     fix_date     = np.busday_offset(period_start, fix_lag, "modifiedfollowing", busdaycal=cal)
-
+ 
     calendar = pd.DataFrame(np.column_stack((fix_date, period_start, period_end, pay_date)), columns=["FixingDate", "AccrualStart", "AccrualEnd", "PaymentDate"])
-
+ 
     if include_tenor:
         calendar["Tenor"] = (calendar.AccrualEnd - trade_date.date).apply(lambda x: Tenor(f"{np.round(x.days / 365, 1)}Y").tenor)
-
+ 
     return calendar
 
 # =============================================================================
@@ -342,187 +298,6 @@ class ZeroCurve:
     def __repr__(self):
         return f"ZeroCurve({self.curve}, {str(self.trade_date.date())})"
 
-# class Bootstrapper:
-#     """
-#     Sequential bootstrap of a discount curve from par market instruments.
-
-#     ESTR (discount_curve=None):
-#         - Spot/deposit: direct formula df = 1/(1 + r*tau)
-#         - OIS swap: analytical inversion of the par swap equation using
-#           the OIS identity PV(float) = P(T_start) - P(T_end)
-
-#     EURIBOR6M (discount_curve=ZeroCurve):
-#         - Multi-curve: cashflows discounted with ESTR curve
-#         - Forward rates from the Euribor curve being built
-#         - Last caplet period solved numerically via brentq (nonlinear)
-
-#     Bootstrapping stops at 12Y due to missing intermediate knot points
-#     beyond that tenor (13Y, 14Y not quoted).
-#     """
-#     def __init__(self,
-#                  par_curve: ParCurve,
-#                  discount_curve: ZeroCurve = None):
-#         self.par_curve      = par_curve
-#         self.discount_curve = discount_curve
-#         self.trade_date     = par_curve.trade_date
-#         self.settle_date    = BusinessDay(self.trade_date, buscal).shift("2D").date
-#         self.z_curve        = dict()
-#         self.float_conv     = CURVE_CONVENTIONS[self.par_curve.curve]["float_leg"]["day_count"]
-#         self.fixed_conv     = CURVE_CONVENTIONS[self.par_curve.curve]["fixed_leg"]["day_count"]
-#         self.df_settle      = self.bootstrap_spot(par_curve["2D"])
-#         self.run()
-#         self.__interp_cache = None
-
-#     def run(self) -> None:
-#         for tenor, instrument in self.par_curve.instruments.items():
-#             if Tenor(tenor) > Tenor("12Y"):
-#                 break
-            
-#             if isinstance(instrument, SpotQuote):
-#                 df = self.bootstrap_spot(instrument)
-
-#             elif isinstance(instrument, DepositQuote):
-#                 df = self.bootstrap_deposit(instrument)
-
-#             else:
-#                 if self.discount_curve is None:
-#                     df = self.bootstrap_ois_swap(instrument)
-#                 else:
-#                     df = self.bootstrap_irs_swap(instrument)
-                
-#             self.z_curve[(instrument.maturity, tenor)] = df
-#             self.__interp_cache = None
-
-#         return self.par_curve.instruments
-
-#     def bootstrap_spot(self, instrument: Quote) -> float:
-#         """P(t0, T) = 1 / (1 + r * tau), measured from trade date."""
-#         conv = self.float_conv
-#         tau  = day_count_fraction(self.trade_date, instrument.maturity, conv)
-#         return 1 / (1 + instrument.rate * tau)
-
-#     def bootstrap_deposit(self, instrument: Quote) -> float:
-#         """P(t0, T) = P(t0, T_settle) * 1 / (1 + r * tau), tau from settlement."""
-#         conv = self.float_conv
-#         tau  = day_count_fraction(self.settle_date, instrument.maturity, conv)
-#         return 1 / (1 + instrument.rate * tau) * self.df_settle
-    
-#     def bootstrap_ois_swap(self, instrument: Quote) -> float:
-#         """
-#         Analytical OIS bootstrap. OIS identity: PV(float) = 1 - P(T_N).
-#         P(T_N) = (1 - r * annuity) / (1 + r * tau_last)
-#         where annuity = sum of tau_i * P(T_i) over all previous coupon dates.
-#         """
-#         schedule = instrument.fixed_schedule
-#         rate     = instrument.rate
-
-#         # Annuity
-#         annuity = 0.0
-#         for _, row in schedule.iloc[:-1].iterrows():
-#             accrual_start = row.AccrualStart
-#             accrual_end   = row.AccrualEnd
-#             payment       = row.PaymentDate
-#             tau           = day_count_fraction(accrual_start, accrual_end, self.float_conv)
-#             df            = self.__get_df(payment)
-#             annuity       += tau * df
-
-#         # Last period
-#         last          = schedule.iloc[-1]
-#         accrual_start = last.AccrualStart
-#         accrual_end   = last.AccrualEnd
-#         tau_last      = day_count_fraction(accrual_start, accrual_end, self.float_conv)
-        
-#         # Discount factor
-#         df = (1 - rate * annuity) / (1 + rate * tau_last)
-#         return df * self.df_settle
-    
-#     def bootstrap_irs_swap(self, instrument: Quote):
-#         """
-#         Multi-curve IRS bootstrap. Fixed leg uses 30U/360 discounted with ESTR.
-#         Float leg uses ACT/360 with Euribor forward rates from the curve being built.
-#         Last float period contains the unknown P_EUR(T_N) nonlinearly (via forward
-#         rate definition), solved with brentq.
-#         """
-#         fixed_schedule = instrument.fixed_schedule
-#         float_schedule = instrument.float_schedule
-#         rate           = instrument.rate
-
-#         # Fixed leg annuity – 30U/360 – Discount = ESTR
-#         fixed_annuity = 0.0
-#         for _, row in fixed_schedule.iloc[:-1].iterrows():
-#             tau            = day_count_fraction(row.AccrualStart, row.AccrualEnd, self.fixed_conv)
-#             df             = self.discount_curve.discount(row.PaymentDate)
-#             fixed_annuity += tau * df
-
-#         # Last fixed period
-#         last_fixed     = fixed_schedule.iloc[-1]
-#         tau_last_fixed = day_count_fraction(last_fixed.AccrualStart, last_fixed.AccrualEnd, self.fixed_conv)
-#         df_last_fixed  = self.discount_curve.discount(last_fixed.PaymentDate)
-
-#         # Float leg PV – ACT/360 – Discount = ESTR
-#         float_pv = 0.0
-#         for _, row in float_schedule.iloc[:-1].iterrows():
-#             tau       = day_count_fraction(row.AccrualStart, row.AccrualEnd, self.float_conv)
-#             df_start  = self.__get_df(row.AccrualStart)
-#             df_end    = self.__get_df(row.AccrualEnd)
-#             fwd       = (df_start / df_end - 1) / tau
-#             df_pay    = self.discount_curve.discount(row.PaymentDate)
-#             float_pv += tau * fwd * df_pay
-
-#         # Last float period
-#         last_float = float_schedule.iloc[-1]
-#         tau_last_float = day_count_fraction(last_float.AccrualStart, last_float.AccrualEnd, self.float_conv)
-#         df_start_last = self.__get_df(last_float.AccrualStart)
-#         df_pay_last = self.discount_curve.discount(last_float.PaymentDate)
-
-#         def equation(x):
-#             fwd_last = (df_start_last / x - 1) / tau_last_float
-#             float_last = tau_last_float * fwd_last * df_pay_last
-#             pv_fixed = rate * (fixed_annuity + tau_last_fixed * df_last_fixed)
-#             pv_float = float_pv + float_last
-#             return pv_fixed - pv_float
-
-#         return brentq(equation, 1e-6, 2.0)
-    
-#     def __get_df(self, date: Date) -> float:
-#         """Log-linear interpolation on the curve being built. Cache invalidated on each new knot."""
-#         date         = np.datetime64(pd.to_datetime(date))
-
-#         if self.__interp_cache is None:
-#             x            = np.array([(i[0] - self.trade_date).days for i in self.z_curve])
-#             y            = np.log(np.array(list(self.z_curve.values())))
-#             self.__interp_cache = interp1d(x, y, kind="linear", fill_value="extrapolate")
-
-#         target       = (date - self.trade_date).days
-#         return np.exp(self.__interp_cache(target))
-    
-#     def build(self) -> ZeroCurve:
-#         """Return a ZeroCurve object from the bootstrapped knot points."""
-#         maturities = np.array([i[0] for i in self.z_curve])
-#         dfs        = np.array(list(self.z_curve.values()))
-#         tenors     = np.array([i[1] for i in self.z_curve.keys()])
-#         return ZeroCurve(self.trade_date, tenors, maturities, dfs, self.par_curve.curve)
-    
-#     def output(self) -> Df:
-#         """Return bootstrapped curve as a long-format DataFrame for visualization."""
-#         maturities = pd.Series([i[0] for i in self.z_curve], name="Maturity")
-#         tenors     = pd.Series([i[1] for i in self.z_curve], name="Tenor")
-#         dfs        = pd.Series(list(self.z_curve.values()), name="DiscountFactor")
-        
-#         df = pd.concat((maturities, tenors, dfs), axis=1)
-
-#         df["Curve"]     = self.par_curve.curve
-#         df["TradeDate"] = self.trade_date
-
-#         df.Curve = df.Curve.astype("category")
-#         df.Tenor = df.Tenor.astype("category")
-
-#         df = df[["TradeDate", "Curve", "Tenor", "Maturity", "DiscountFactor"]]
-#         return df
-    
-#     def __repr__(self):
-#         return f"Bootstrapper({str(self.trade_date.date())}, par_curve={self.par_curve.curve}{'' if self.discount_curve is None else ', discount_curve=' + self.discount_curve.curve})"
-
 class Bootstrapper:
     """
     Sequential bootstrap of a discount curve from par market instruments.
@@ -551,6 +326,14 @@ class Bootstrapper:
         self.float_conv     = CURVE_CONVENTIONS[self.par_curve.curve]["float_leg"]["day_count"]
         self.fixed_conv     = CURVE_CONVENTIONS[self.par_curve.curve]["fixed_leg"]["day_count"]
         self.df_settle      = self.bootstrap_spot(par_curve["2D"])
+
+        max_tenor = max(Tenor(t) for t in par_curve.instruments.keys())
+        if max_tenor < Tenor("12Y"):
+            raise ValueError(
+                f"{par_curve.curve} par curve on {self.trade_date.date()} only reaches "
+                f"{max_tenor.tenor}; insufficient quotes to bootstrap."
+            )
+
         self.run()
         self.__interp_cache = None
 
@@ -731,10 +514,14 @@ def bootstrap_estr_loop(rebuild=False):
     dates  = sorted(dates[dates.Date > estr.TradeDate.max()].Date.unique())
 
     new = []
-
+    
+    n = 0
     for date in dates[:]:
         try:
             new.append(Bootstrapper(ParCurve(date, "ESTR")).output())
+            if n % 10 == 0:
+                print(f"{date.date()}: OK")
+            n += 1
             print(f"{date.date()}: OK.")
         except:
             continue
@@ -766,11 +553,14 @@ def bootstrap_euribor_loop(rebuild=False):
 
     new = []
 
+    n = 0
     for date in dates[:]:
         try:
             disc = Bootstrapper(ParCurve(date, "ESTR")).build()
             new.append(Bootstrapper(ParCurve(date, "EURIBOR6M"), disc).output())
-            print(f"{date.date()}: OK")
+            if n % 10 == 0:
+                print(f"{date.date()}: OK")
+            n += 1
         except:
             continue
 
@@ -806,4 +596,7 @@ def ois_reset_dates(start, end, cal):
     days          = days.dropna().reset_index(drop=True)
     return days
 
+if __name__ == "__main__":
+    bootstrap_estr_loop()
+    bootstrap_euribor_loop()
 
