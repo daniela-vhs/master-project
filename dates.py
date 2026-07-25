@@ -96,6 +96,25 @@ def target_holidays(year_start: int, year_end: int=None):
         ])
         holidays.extend(dates)
 
+    extra_days = [pd.to_datetime(i) for i in [
+        "2024-12-24",
+        "2021-12-31",
+        "2021-03-19",
+        "2021-03-18",
+        "2021-03-17",
+        "2020-12-31",
+        "2020-07-30",
+        "2020-07-29",
+        "2020-07-14",
+        "2020-07-13",
+        "2019-12-31",
+        "2019-12-24",
+        "2019-11-29",
+    ] if pd.to_datetime(i).year <= year_end]
+
+    holidays.extend(extra_days)
+    holidays.sort()
+
     return [np.datetime64(i.date()) for i in holidays]
 
 class BusinessDay:

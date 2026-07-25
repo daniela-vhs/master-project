@@ -43,7 +43,7 @@ rates_output["Curve"] = rates_output["Curve"].astype("category")
 rates_output["Tenor"] = rates_output["Tenor"].astype("category")
 rates_output["Rate"] = pd.to_numeric(rates_output["Rate"], errors="coerce")
 rates_output = rates_output[(rates_output.Date >= min_date) & (rates_output.Date <= max_date) & (~rates_output.Date.isin(holidays))].reset_index(drop=True)
-rates_output.to_parquet("clean_data/rates.parquet", index=False)
+rates_output[~((rates_output.Tenor.isin(["15M", "21M"])) & (rates_output.Curve == "EURIBOR6M"))].to_parquet("clean_data/rates.parquet", index=False)
 
 # Clean vol.xlsx
 # Input: Excel file

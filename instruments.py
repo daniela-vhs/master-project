@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 from dates import Tenor, Date, day_count_fraction, clean_date, clean_tenor
-from curves import buscal, schedule_generation, ZeroCurve, get_fixing, ois_reset_dates, CURVE_CONVENTIONS
+from curves import buscal, schedule_generation, get_fixing, ois_reset_dates, CURVE_CONVENTIONS
 from scipy.stats import norm
 
 rates         = pd.read_parquet("clean_data/rates.parquet").set_index(["Date", "Curve", "Tenor"])
@@ -174,20 +174,6 @@ class IRS(Instrument):
         float_pv = self.float_leg(market)
         return float_pv - fixed_pv
     
-    def delta(self, bump_fn, tenor, eps_bp=1, ul=None):
-        up = bump_fn(tenor, +eps_bp, generate_caplets=False)
-        down = bump_fn(tenor, -eps_bp, generate_caplets=False)
-
-        p_up = self.value(up, ul)
-        p_down = self.value(down, ul)
-        return (p_up - p_down) / (2 * eps_bp / 10_000)
-    
-    def theta(self, market, eps_days=1, ul=None):
-        up = market.bump_date(eps_days)
-
-        p_up = self.value(up, ul)
-        return p_up
-    
     def __repr__(self):
         return f"IRS({self.float_index}, {self.tenor.tenor}, {self.fixed_rate:.4%})"
 
@@ -224,30 +210,6 @@ class Caplet(Instrument):
         self.fwd_rate         = fwd_rate
         self.caplet_vol       = caplet_vol
         self.tdelta            = day_count_fraction(self.accrual_start, self.accrual_end, "ACT/365")
-
-    @classmethod
-    def from_date_strike(cls, trade_date, strike):
-        trade_date = clean_date(trade_date)
-        df = caplets.loc[trade_date].copy()
-        caplet_list = dict()
-
-        for tenor, row in df.iterrows():            
-            bucket = row.CapTenorBucket if Tenor(tenor) <= Tenor("3Y") else tenor
-            stripped_vol = cap_stripping.loc[(trade_date, bucket, False, strike)].StrippedVol
-
-            caplet_list[tenor] = Caplet(trade_date, tenor, bucket, row.FixingDate, row.AccrualStart, row.AccrualEnd, row.PaymentDate, row.Tau, row.TFix, row.EurStartDF, row.EurEndDF, row.EstrPayDF, row.FwdRate, stripped_vol)
-        return caplet_list
-    
-    @classmethod
-    def from_date(cls, trade_date):
-        strikes = [-0.005, -0.0025, -0.00125, 0, 0.005, 0.01, 0.015, 0.02, 0.025, 0.03, 0.04, 0.05]
-        caplet_list = dict()
-
-        for strike in strikes:
-            key = "ATM" if strike is None else strike
-            caplet_list[key] = cls.from_date_strike(trade_date, strike)
-
-        return caplet_list
 
     def bachelier_price(self, strike, vol=None):
         vol   = self.caplet_vol if vol is None else vol
@@ -313,6 +275,59 @@ class Caplet(Instrument):
         p_up = self.value(up, ul)
         return p_up
 
+    @classmethod
+    def generate(cls, market, vol=0):
+        tenors = [Tenor("3Y") + Tenor(f"{i * 6}M") for i in range(15)]
+
+        schedule = schedule_generation(market.trade_date, "10Y", "SemiAnnual", pay_delay="0 Business Days", include_tenor=True).set_index("Tenor")
+        schedule = schedule[schedule.FixingDate > market.trade_date]
+
+        fixing_date   = schedule.FixingDate.tolist()
+        accrual_start = schedule.AccrualStart.tolist()
+        accrual_end   = schedule.AccrualEnd.tolist()
+        payment_date  = schedule.PaymentDate.tolist()
+        tau           = day_count_fraction(accrual_start, accrual_end, "ACT/360")
+        tfix          = day_count_fraction(np.repeat(market.trade_date, len(accrual_end)), fixing_date, "ACT/365")
+        eur_start_df  = market.euribor_curve[accrual_start]
+        eur_end_df    = market.euribor_curve[accrual_end]
+        estr_pay_df   = market.estr_curve[payment_date]
+        fwd_rate      = (eur_start_df / eur_end_df - 1) / tau
+
+        caplets = dict()
+
+        for n, tenor in enumerate(schedule.index):
+            bucket = [i.tenor for i in tenors if Tenor(tenor) <= i][0]
+            caplets[tenor] = Caplet(
+                market.trade_date, tenor, bucket, fixing_date[n], accrual_start[n], accrual_end[n], payment_date[n],
+                tau[n], tfix[n], eur_start_df[n], eur_end_df[n], estr_pay_df[n], fwd_rate[n], vol
+            )
+        
+        return caplets
+
+    @classmethod
+    def from_date_strike(cls, trade_date, strike):
+        trade_date = clean_date(trade_date)
+        df = caplets.loc[trade_date].copy()
+        caplet_list = dict()
+
+        for tenor, row in df.iterrows():            
+            bucket = row.CapTenorBucket
+            stripped_vol = cap_stripping.loc[(trade_date, bucket, False, strike)].StrippedVol
+
+            caplet_list[tenor] = Caplet(trade_date, tenor, bucket, row.FixingDate, row.AccrualStart, row.AccrualEnd, row.PaymentDate, row.Tau, row.TFix, row.EurStartDF, row.EurEndDF, row.EstrPayDF, row.FwdRate, stripped_vol)
+        return caplet_list
+    
+    @classmethod
+    def from_date(cls, trade_date):
+        strikes = [-0.005, -0.0025, -0.00125, 0, 0.005, 0.01, 0.015, 0.02, 0.025, 0.03, 0.04, 0.05]
+        caplet_list = dict()
+
+        for strike in strikes:
+            key = "ATM" if strike is None else strike
+            caplet_list[key] = cls.from_date_strike(trade_date, strike)
+
+        return caplet_list
+
 class Cap:
     def __init__(self,
                  trade_date: Date,
@@ -357,132 +372,101 @@ class Cap:
     
     def __repr__(self):
         return f"Cap({self.tenor.tenor}, Vol: {self.cap_vol:.4f}, Strike: {self.strike:.4%})"
-    
+
     @classmethod
-    def from_date_strike(cls, trade_date, market, strike=None):
-        trade_date = clean_date(trade_date)
+    def from_market_strike(cls, market, strike=None, flat_vol=False):
         atm = strike is None
 
         if atm:
-            df = vols.xs((trade_date, True), level=("Date", "IsATM")).droplevel("Strike")
-            template_caplets = Caplet.from_date_strike(trade_date, 0.0)  # schedule/DF template only, vol discarded below
-        else:
-            df = vols.xs((trade_date, strike * 100), level=("Date", "Strike")).droplevel("IsATM")
-            all_caplets = Caplet.from_date_strike(trade_date, strike)
+            df = vols.xs((market.trade_date, True), level=("Date", "IsATM")).droplevel("Strike")
+            all_caplets = {k: v.rebuild() for k, v in Caplet.from_date_strike(market.trade_date, 0.0).items()}
 
-        anchors = [i for i in df.index if Tenor(i) >= Tenor("3Y") and Tenor(i) <= Tenor("10Y")]
+        else:
+            df = vols.xs((market.trade_date, strike * 100), level=("Date", "Strike")).droplevel("IsATM")
+            all_caplets = {k: v.rebuild() for k, v in Caplet.from_date_strike(market.trade_date, strike).items()}
+
+        anchors = sorted([i for i in df.index if Tenor(i) >= Tenor("3Y") and Tenor(i) <= Tenor("10Y")], key=lambda x: Tenor(x))
         df = df.loc[anchors]
 
         caps = dict()
+
         for tenor, row in df.iterrows():
             if atm:
-                cap_strike = IRS.from_benchmark("EURIBOR6M", trade_date, tenor).par_rate(market)
-                caplets = {}
-                for t, c in template_caplets.items():
+                cap_strike = IRS.from_benchmark("EURIBOR6M", market.trade_date, tenor).par_rate(market)
+                caplets = dict()
+
+                for t, c in all_caplets.items():
                     if c.isin(tenor):
-                        vol = market.caplet_surface.caplet_vol(c.fixing_date, cap_strike)
-                        caplets[t] = Caplet(c.trade_date, c.tenor, c.cap_tenor_bucket, c.fixing_date,
-                                            c.accrual_start, c.accrual_end, c.payment_date, c.tau, c.tfix,
-                                            c.eur_start_df, c.eur_end_df, c.estr_pay_df, c.fwd_rate, vol)
+                        if flat_vol:
+                            vol = row.Vol
+                        else:
+                            vol = market.caplet_surface.caplet_vol(c.fixing_date, cap_strike)
+                        caplets[t] = Caplet(
+                            c.trade_date, c.tenor, c.cap_tenor_bucket, c.fixing_date,
+                            c.accrual_start, c.accrual_end, c.payment_date, c.tau, c.tfix,
+                            c.eur_start_df, c.eur_end_df, c.estr_pay_df, c.fwd_rate, vol
+                        )
             else:
                 cap_strike = strike
-                caplets = {t: c for t, c in all_caplets.items() if c.isin(tenor)}
+                caplets = {t: c.rebuild() for t, c in all_caplets.items() if c.isin(tenor)}
 
-            caps[tenor] = Cap(trade_date, tenor, row.Vol, cap_strike, caplets)
+                if flat_vol:
+                    for caplet in caplets.values():
+                        caplet.caplet_vol = row.Vol
 
-        return dict(sorted(caps.items(), key=lambda x: x[1].tenor))
-    
+            caps[tenor] = Cap(market.trade_date, tenor, row.Vol, cap_strike, caplets)
+
+        return caps
+
     @classmethod
-    def from_date(cls, trade_date, market):
+    def from_market(cls, market, flat_vol=False):
         strikes = [None, -0.005, -0.0025, -0.00125, 0, 0.005, 0.01, 0.015, 0.02, 0.025, 0.03, 0.04, 0.05]
+        caps = {("ATM" if i is None else i): cls.from_market_strike(market, i, flat_vol) for i in strikes}
+        return caps
+
+    @classmethod
+    def generate(cls, market, tenor, strike=None, flat_vol=True, caplets=None):
+        if strike is None:
+            strike = IRS.from_benchmark("EURIBOR6M", market.trade_date, tenor).par_rate(market)
+
+        tenor    = clean_tenor(tenor)
+        schedule = schedule_generation(market.trade_date, "10Y", "SemiAnnual", pay_delay="0 Business Days", include_tenor=True).set_index("Tenor")
+        schedule = schedule[[Tenor(t) <= tenor for t in schedule.index]]
+        schedule = schedule[schedule.FixingDate > market.trade_date]
+        cap_vol  = market.cap_surface.cap_vol(schedule.iloc[-1].AccrualEnd, strike)
+
+        if caplets is not None:
+            caplets = {k: v.rebuild() for k, v in caplets.items() if v.isin(tenor)}
+            for caplet in caplets.values():
+                caplet.caplet_vol = cap_vol
+            return cls(market.trade_date, tenor, cap_vol, strike, caplets)
+
+        anchors = [Tenor("3Y") + Tenor(f"{i * 6}M") for i in range(15) if Tenor("3Y") + Tenor(f"{i * 6}M") <= tenor]
+
+        # Caplet vols
+        if not flat_vol:
+            vols = [market.caplet_surface.caplet_vol(i, strike) for i in schedule.FixingDate]
+        else:
+            vols = np.ones(len(schedule.FixingDate)) * cap_vol
+
+        # Caplet information
+        fixing_date   = schedule.FixingDate.tolist()
+        accrual_start = schedule.AccrualStart.tolist()
+        accrual_end   = schedule.AccrualEnd.tolist()
+        payment_date  = schedule.PaymentDate.tolist()
+        tau           = day_count_fraction(accrual_start, accrual_end, "ACT/360")
+        tfix          = day_count_fraction(np.repeat(market.trade_date, len(accrual_end)), fixing_date, "ACT/365")
+        eur_start_df  = market.euribor_curve[accrual_start]
+        eur_end_df    = market.euribor_curve[accrual_end]
+        estr_pay_df   = market.estr_curve[payment_date]
+        fwd_rate      = (eur_start_df / eur_end_df - 1) / tau
+
         caplet_list = dict()
 
-        for strike in strikes:
-            key = "ATM" if strike is None else strike
-            caplet_list[key] = cls.from_date_strike(trade_date, market, strike)
+        for n, t in enumerate(schedule.index):
+            bucket = [i.tenor for i in anchors if Tenor(t) <= i][0]
+            caplet_list[t] = Caplet(market.trade_date, t, bucket, fixing_date[n], accrual_start[n], accrual_end[n], payment_date[n], tau[n], tfix[n], eur_start_df[n], eur_end_df[n], estr_pay_df[n], fwd_rate[n], vols[n])
 
-        return caplet_list
-    
-    @classmethod
-    def from_market(cls, market, strike=None):
-        atm = strike is None
-
-        if atm:
-            strikes = cap_stripping.sort_index().xs((market.trade_date, atm), level=("TradeDate", "IsATM")).reset_index(level="Strike")
-            flat_vols = vols.xs((market.trade_date, atm), level=("Date", "IsATM")).droplevel("Strike").Vol
-        else:
-            strikes = cap_stripping.sort_index().xs((market.trade_date, strike), level=("TradeDate", "Strike")).droplevel("IsATM")
-            strikes["Strike"] = strike
-            flat_vols = vols.xs((market.trade_date, strike * 100), level=("Date", "Strike")).droplevel("IsATM").Vol
-        
-        cap_list  = {}
-
-        for tenor, row in strikes.iterrows():
-            caplets = dict([(k, v) for k, v in market.caplets.items() if v.isin(tenor)])
-            cap_list[tenor] = Cap(market.trade_date, tenor, flat_vols.loc[tenor], row.Strike, caplets)
-
-        return cap_list
-
-def caplet_load(trade_date: Date, strike=None):
-    trade_date = clean_date(trade_date)
-    df = caplets.loc[trade_date].copy()
-    caplet_list = dict()
-    atm = True if strike is None else False
-
-    for tenor, row in df.iterrows():
-        bucket = row.CapTenorBucket
-        if atm:
-            stripped_vol = cap_stripping.loc[(trade_date, bucket, True)].iloc[0].StrippedVol
-        else:
-            stripped_vol = cap_stripping.loc[(trade_date, bucket, atm, strike)].StrippedVol
-        caplet_list[tenor] = Caplet(trade_date, tenor, bucket, row.FixingDate, row.AccrualStart, row.AccrualEnd, row.PaymentDate, row.Tau, row.TFix, row.EurStartDF, row.EurEndDF, row.EstrPayDF, row.FwdRate, stripped_vol)
-    
-    return caplet_list
-
-def cap_load(trade_date: Date, strike=None):
-    trade_date = clean_date(trade_date)
-    all_caplets = caplet_load(trade_date, strike)
-    atm = strike is None
-
-    if atm:
-        df = vols.xs((trade_date, True), level=("Date", "IsATM")).copy().droplevel("Strike")
-    else:
-        df = vols.xs((trade_date, strike * 100), level=("Date", "Strike")).copy().droplevel("IsATM")
-    
-    anchors = [i for i in df.index if Tenor(i) >= Tenor("3Y") and Tenor(i) <= Tenor("10Y")]
-    df = df.loc[anchors]
-
-    if atm:
-        df = df.join(cap_stripping.xs((trade_date, True), level=("TradeDate", "IsATM")).reset_index().set_index("Tenor"))
-    else:
-        df["Strike"] = strike
-
-    caps = dict()
-    for tenor, row in df.iterrows():
-        caplets = dict([(k, v) for k, v in all_caplets.items() if v.isin(tenor)])
-        caps[tenor] = Cap(trade_date, tenor, row.Vol, row.Strike, caplets)
-
-    caps = dict(sorted(caps.items(), key=lambda x: x[1].tenor))
-
-    return caps
-
-def caps_from_market(market, strike=None):
-    atm = strike is None
-
-    if atm:
-        strikes = cap_stripping.sort_index().xs((market.trade_date, atm), level=("TradeDate", "IsATM")).reset_index(level="Strike")
-        flat_vols = vols.xs((market.trade_date, atm), level=("Date", "IsATM")).droplevel("Strike").Vol
-    else:
-        strikes = cap_stripping.sort_index().xs((market.trade_date, strike), level=("TradeDate", "Strike")).droplevel("IsATM")
-        strikes["Strike"] = strike
-        flat_vols = vols.xs((market.trade_date, strike * 100), level=("Date", "Strike")).droplevel("IsATM").Vol
-    
-    cap_list  = {}
-
-    for tenor, row in strikes.iterrows():
-        caplets = dict([(k, v) for k, v in market.caplets.items() if v.isin(tenor)])
-        cap_list[tenor] = Cap(market.trade_date, tenor, flat_vols.loc[tenor], row.Strike, caplets)
-
-    return cap_list
+        return cls(market.trade_date, tenor, cap_vol, strike, caplet_list)
 
 

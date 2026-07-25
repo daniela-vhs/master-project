@@ -1,6 +1,8 @@
 from dates import clean_date, clean_tenor, Tenor, BusinessDay
-from curves import ZeroCurve, buscal, schedule_generation
+from curves import ZeroCurve, buscal, schedule_generation, Bootstrapper, ParCurve
 from typing import TypeAlias
+from hull_white_calibration import HullWhite
+from caplet_stripping import caplet_stripping
 
 import pandas as pd
 import numpy as np
@@ -36,7 +38,12 @@ class CapVolSurface:
         df          = vol_data.xs((trade_date, False), level=("Date", "IsATM"))
         strikes     = np.sort(df.index.get_level_values("Strike").unique() / 100)
         tenors      = np.array(sorted(df.index.get_level_values("Tenor").unique(), key=lambda x: Tenor(x)))
-        maturities  = [BusinessDay(trade_date, calendar=buscal).shift("2D", "following").shift(i, "modifiedfollowing").date for i in tenors]
+        master      = schedule_generation(trade_date, tenors[-1], "Annual", pay_delay="0 Business Days", include_tenor=True).set_index("Tenor")
+        maturities  = [
+            np.datetime64(pd.Timestamp(master.loc[t].AccrualEnd).date()) if t in master.index
+            else np.datetime64(BusinessDay(trade_date, calendar=buscal).shift("2D", "following").shift(t, "modifiedfollowing").date)
+            for t in tenors
+        ]
         vol_surface = df.reset_index().pivot(index="Tenor", columns="Strike", values="Vol").reindex(tenors).to_numpy()
         
         return cls(trade_date, strikes, tenors, maturities, vol_surface)
@@ -50,12 +57,13 @@ class CapVolSurface:
         smile = [np.sqrt(f(clamped_target) / clamped_target) for f in self.__tenor_interp]
 
         return PchipInterpolator(self.strikes, smile)(strike)
-    
-    def bump(self, tenor, bump=1):
+
+    def bump(self, tenor, strike, bump=1):
         tenor = clean_tenor(tenor)
-        tenor_idx = np.where(self.tenors == tenor.tenor)
+        tenor_idx = np.where(self.tenors == tenor.tenor)[0][0]
+        strike_idx = np.where(self.strikes == strike)[0][0]
         vols = np.array(self.vols)
-        vols[tenor_idx] += bump
+        vols[tenor_idx][strike_idx] += bump
         return CapVolSurface(self.trade_date, self.strikes, self.tenors, self.maturities, vols)
     
     def output(self, tenors=True):
@@ -63,6 +71,9 @@ class CapVolSurface:
     
     def __repr__(self):
         return f"CapVolSurface({self.trade_date})"
+
+    def __getitem__(self, key):
+        return self.cap_vol(key[0], key[1])
 
 class CapletVolSurface:
     def __init__(self,
@@ -113,15 +124,16 @@ class CapletVolSurface:
         return pd.DataFrame(self.vols, columns=self.strikes, index=self.tenors)
     
     def __repr__(self):
-        return f"VolSurface({self.trade_date})"
+        return f"CapletVolSurface({self.trade_date})"
 
 class Market:
     def __init__(self,
             trade_date: Date,
             estr_curve: ZeroCurve,
             euribor_curve: ZeroCurve,
-            caplet_surface: CapletVolSurface=None,
-            cap_surface: CapVolSurface=None,
+            caplet_surface: CapletVolSurface = None,
+            cap_surface: CapVolSurface = None,
+            hull_white: HullWhite = None,
             ):
         
         self.trade_date = clean_date(trade_date)
@@ -129,20 +141,127 @@ class Market:
         self.euribor_curve = euribor_curve
         self.caplet_surface = caplet_surface
         self.cap_surface = cap_surface
+        self.hull_white = hull_white
 
     @classmethod
-    def from_date(cls, trade_date, generate_caplets=True, generate_caps=True):
+    def from_date(cls, trade_date, generate_caplets=True, generate_caps=True, generate_hw=True):
         trade_date  = clean_date(trade_date)
         z_estr      = ZeroCurve.from_date(trade_date, "ESTR")
         z_eur       = ZeroCurve.from_date(trade_date, "EURIBOR6M")
         caplet_vols = CapletVolSurface.from_date(trade_date) if generate_caplets else None
         cap_vols    = CapVolSurface.from_date(trade_date) if generate_caps else None
-        return cls(trade_date, z_estr, z_eur, caplet_vols, cap_vols)
+        hull_white  = HullWhite.from_date(trade_date) if generate_hw else None
+        return cls(trade_date, z_estr, z_eur, caplet_vols, cap_vols, hull_white)
     
     def day_shift(self, other):
         return (self.trade_date - other.trade_date).astype("int")
     
     def __repr__(self):
         return f"Market({str(self.trade_date)})"
+
+    # ----- #
+    # BUMPS #
+    # ----- #
+    # 1. ESTR Curve
+    def estr_bump(self, tenor, bump=1):
+        curve  = self.estr_curve
+        tenors = curve.tenors
+        mats   = curve.maturities
+        dfs    = np.array(curve.dfs)
+        idx    = np.where(tenors == tenor)
+        rate   = curve.continuous_rate(mats[idx])
+        tau    = (mats[idx][0] - self.trade_date).days / 360
+
+        # Compute bump
+        new_rate = rate + bump / 10_000
+        new_df   = np.exp(-new_rate * tau)
+
+        # Apply bump
+        dfs[idx] = new_df
+
+        # Create new bumped Zero Curve
+        new_curve = ZeroCurve(self.trade_date, tenors, mats, dfs, "ESTR", "ACT/360")
+
+        # Return new market object
+        return Market(self.trade_date, new_curve, self.euribor_curve, self.caplet_surface, self.cap_surface, self.hull_white)
+
+    # 1. ESTR Curve
+    def estr_bump(self, tenor, bump=1):
+        par_curve = ParCurve(self.trade_date, "ESTR")
+        bumped   = par_curve.instruments[tenor]
+
+        bumped.rate += bump / 10_000
+        par_curve.instruments[tenor] = bumped
+        zero_curve = Bootstrapper(par_curve).build()
+        return Market(
+            self.trade_date,
+            zero_curve,
+            self.euribor_curve,
+            self.caplet_surface,
+            self.cap_surface,
+            self.hull_white
+            )
+
+    # 2. EURIBOR Curve
+    def euribor_bump(self, tenor, bump=1):
+        par_curve = ParCurve(self.trade_date, "EURIBOR6M")
+        bumped   = par_curve.instruments[tenor]
+
+        bumped.rate += bump / 10_000
+        par_curve.instruments[tenor] = bumped
+        zero_curve = Bootstrapper(par_curve, self.estr_curve).build()
+        return Market(
+            self.trade_date,
+            self.estr_curve,
+            zero_curve,
+            self.caplet_surface,
+            self.cap_surface,
+            self.hull_white
+            )
+
+    # 3. Cap surface
+    def cap_vol_bump(self, tenor, strike, bump=1, caplet_recalibration = True, hw_recalibration = True):
+        new_cap_surface = self.cap_surface.bump(tenor, strike, bump)
+        new_mkt = Market(
+            self.trade_date,
+            self.estr_curve,
+            self.euribor_curve,
+            self.caplet_surface,
+            new_cap_surface,
+            self.hull_white
+        )
+
+        # Caplet Surface Recalibration
+        if caplet_recalibration:
+            caplet_vols = np.array(self.caplet_surface.vols)
+            new_caplet_vols = np.zeros_like(caplet_vols)
+
+            for n, strike in enumerate([-0.005, -0.0025, -0.00125, 0, 0.005, 0.01, 0.015, 0.02, 0.025, 0.03, 0.04, 0.05]):
+                new_caplet_vols[:, n] = [i[0] for i in caplet_stripping(new_mkt, strike).values()]
+
+            new_caplet_surface = CapletVolSurface(self.trade_date, self.caplet_surface.strikes, self.caplet_surface.tenors, self.caplet_surface.fixings, new_caplet_vols)
+            new_mkt = Market(
+                        self.trade_date,
+                        self.estr_curve,
+                        self.euribor_curve,
+                        new_caplet_surface,
+                        new_cap_surface,
+                        self.hull_white
+                    )
+
+        else: new_caplet_surface = self.caplet_surface
+
+        # Hull White Recalibration
+        if hw_recalibration:
+            new_hull_white = self.hull_white.calibrate(new_mkt)
+        else:
+            new_hull_white = self.hull_white
+            
+        return Market(self.trade_date, self.estr_curve, self.euribor_curve, new_caplet_surface, new_cap_surface, new_hull_white)
+
+    # 4. Time bump
+    def day_bump(self, bump=1):
+        new_date = clean_date(self.trade_date + pd.Timedelta(days=bump))
+        return Market(new_date, self.estr_curve, self.euribor_curve, self.caplet_surface, self.cap_surface, self.hull_white)
 
 
