@@ -185,7 +185,7 @@ class Market:
         # Return new market object
         return Market(self.trade_date, new_curve, self.euribor_curve, self.caplet_surface, self.cap_surface, self.hull_white)
 
-    # 1. ESTR Curve
+    # 1. ESTR curve bump
     def estr_bump(self, tenor, bump=1):
         par_curve = ParCurve(self.trade_date, "ESTR")
         bumped   = par_curve.instruments[tenor]
@@ -202,7 +202,7 @@ class Market:
             self.hull_white
             )
 
-    # 2. EURIBOR Curve
+    # 2. EURIBOR curve bump
     def euribor_bump(self, tenor, bump=1):
         par_curve = ParCurve(self.trade_date, "EURIBOR6M")
         bumped   = par_curve.instruments[tenor]
@@ -219,7 +219,7 @@ class Market:
             self.hull_white
             )
 
-    # 3. Cap surface
+    # 3. Cap surface bump
     def cap_vol_bump(self, tenor, strike, bump=1, caplet_recalibration = True, hw_recalibration = True):
         new_cap_surface = self.cap_surface.bump(tenor, strike, bump)
         new_mkt = Market(
@@ -259,9 +259,41 @@ class Market:
             
         return Market(self.trade_date, self.estr_curve, self.euribor_curve, new_caplet_surface, new_cap_surface, new_hull_white)
 
-    # 4. Time bump
+    # 4. Day bump
     def day_bump(self, bump=1):
         new_date = clean_date(self.trade_date + pd.Timedelta(days=bump))
         return Market(new_date, self.estr_curve, self.euribor_curve, self.caplet_surface, self.cap_surface, self.hull_white)
+
+    # ------------------ #
+    # REAL MARKET SHIFTS #
+    # ------------------ #
+    # 1. ESTR curve shift
+    def estr_shift(self, other):
+        self_estr_par = ParCurve(self.trade_date, "ESTR")
+        other_estr_par = ParCurve(other.trade_date, "ESTR")
+        return {k: v.rate - other_estr_par.instruments[k].rate for k, v in self_estr_par.instruments.items()}
+
+    # 2. EURIBOR6M curve shift
+    def euribor_shift(self, other):
+        self_euribor_par = ParCurve(self.trade_date, "EURIBOR6M")
+        other_euribor_par = ParCurve(other.trade_date, "EURIBOR6M")
+        return {k: v.rate - other_euribor_par.instruments[k].rate for k, v in self_euribor_par.instruments.items()}
+
+    # 3. Cap surface shift
+    def cap_vol_shift(self, other):
+        vol_dif = self.cap_surface.vols - other.cap_surface.vols
+
+        shifts = dict()
+        
+        for j, strike in enumerate(self.cap_surface.strikes):
+            shifts[strike] = dict()
+            for i, tenor in enumerate(self.cap_surface.tenors):
+                shifts[strike][str(tenor)] = vol_dif[i][j]
+                
+        return shifts
+    
+    # 4. Day shift
+    def day_shift(self, other):
+        return (self.trade_date - other.trade_date).astype(int)
 
 

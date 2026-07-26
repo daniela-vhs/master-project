@@ -10,30 +10,8 @@ vols          = pd.read_parquet("clean_data/vols.parquet").set_index(["Date", "T
 caplets       = pd.read_parquet("clean_data/caplets.parquet").set_index(["TradeDate", "Tenor"])
 cap_stripping = pd.read_parquet("clean_data/cap_stripping.parquet").set_index(["TradeDate", "Tenor", "IsATM", "Strike"]).sort_index()
 
-class Instrument:
-    def value(self, market, *params, ul):
-        return np.zeros_like(ul)
-
-    def delta(self, market, *params, ul):
-        return np.zeros_like(ul)
-    
-    def theta(self, market, *params, ul):
-        return np.zeros_like(ul)
-    
-    def gamma(self, market, *params, ul):
-        return np.zeros_like(ul)
-    
-    def vega(self, market, *params, ul):
-        return np.zeros_like(ul)
-    
-    def volga(self, market, *params, ul):
-        return np.zeros_like(ul)
-    
-    def vanna(self, market, *params, ul):
-        return np.zeros_like(ul)
-
 # -- IRS Pricing -------------------------------------------
-class IRS(Instrument):
+class IRS:
     def __init__(self,
         trade_date : Date,
         tenor      : Tenor,
@@ -177,7 +155,7 @@ class IRS(Instrument):
     def __repr__(self):
         return f"IRS({self.float_index}, {self.tenor.tenor}, {self.fixed_rate:.4%})"
 
-class Caplet(Instrument):
+class Caplet:
     def __init__(self,
                  trade_date: Date,
                  tenor: Tenor,
@@ -210,70 +188,6 @@ class Caplet(Instrument):
         self.fwd_rate         = fwd_rate
         self.caplet_vol       = caplet_vol
         self.tdelta            = day_count_fraction(self.accrual_start, self.accrual_end, "ACT/365")
-
-    def bachelier_price(self, strike, vol=None):
-        vol   = self.caplet_vol if vol is None else vol
-        d     = (self.fwd_rate - strike) / (vol / 10_000 * np.sqrt(self.tfix))
-        price = self.tau * self.estr_pay_df * ((self.fwd_rate - strike) * norm.cdf(d) + vol / 10_000 * np.sqrt(self.tfix) * norm.pdf(d))
-        return price
-    
-    def jamshidian_price(self, strike, a, sigma):
-        tdelta      = self.tdelta
-        bond_strike = 1 / (1 + strike * self.tau)
-        B_ts        = (1 - np.exp(-a * tdelta)) / a
-        sigma_p     = sigma * np.sqrt((1 - np.exp(-2 * a * self.tfix)) / (2 * a)) * B_ts
-        h           = 1 / sigma_p * np.log(self.eur_end_df / (self.eur_start_df * bond_strike)) + sigma_p / 2
-        zbp         = bond_strike * self.eur_start_df * norm.cdf(-h + sigma_p) - self.eur_end_df * norm.cdf(-h)
-        price       = (1 + strike * self.tau) * zbp * self.estr_pay_df / self.eur_end_df
-        return price
-    
-    def isin(self, parent_tenor: Tenor):
-        parent_tenor = clean_tenor(parent_tenor)
-        return self.tenor <= parent_tenor
-    
-    def rebuild(self):
-        return Caplet(
-            self.trade_date,
-            self.tenor,
-            self.cap_tenor_bucket,
-            self.fixing_date,
-            self.accrual_start,
-            self.accrual_end,
-            self.payment_date,
-            self.tau,
-            self.tfix,
-            self.eur_start_df,
-            self.eur_end_df,
-            self.estr_pay_df,
-            self.fwd_rate,
-            self.caplet_vol
-        )
-    
-    def __repr__(self):
-        return f"Caplet({self.tenor.tenor}, Vol: {self.caplet_vol:.4f}, Fwd Rate: {self.fwd_rate:.4%})"
-    
-    def value(self, market, strike):
-        vol         = market.v_surface.caplet_vol(self.fixing_date, strike)
-        tfix        = day_count_fraction(market.trade_date, self.fixing_date, "ACT/365")
-        fwd_rate    = market.euribor_curve.forward_rate(self.accrual_start, self.accrual_end)
-        d           = (fwd_rate - strike) / (vol / 10_000 * np.sqrt(tfix))
-        estr_pay_df = market.estr_curve.discount(self.payment_date)
-        price = self.tau * estr_pay_df * ((fwd_rate - strike) * norm.cdf(d) + vol / 10_000 * np.sqrt(tfix) * norm.pdf(d))
-        return price
-    
-    def delta(self, bump_fn, tenor, eps_bp=1, ul=None):
-        up = bump_fn(tenor, +eps_bp, generate_caplets=False)
-        down = bump_fn(tenor, -eps_bp, generate_caplets=False)
-
-        p_up = self.value(up, ul)
-        p_down = self.value(down, ul)
-        return (p_up - p_down) / (2 * eps_bp / 10_000)
-    
-    def theta(self, market, eps_days=1, ul=None):
-        up = market.bump_date(eps_days)
-
-        p_up = self.value(up, ul)
-        return p_up
 
     @classmethod
     def generate(cls, market, vol=0):
@@ -328,6 +242,107 @@ class Caplet(Instrument):
 
         return caplet_list
 
+    def bachelier_price(self, strike, vol=None):
+        vol   = self.caplet_vol if vol is None else vol
+        d     = (self.fwd_rate - strike) / (vol / 10_000 * np.sqrt(self.tfix))
+        price = self.tau * self.estr_pay_df * ((self.fwd_rate - strike) * norm.cdf(d) + vol / 10_000 * np.sqrt(self.tfix) * norm.pdf(d))
+        return price
+    
+    def jamshidian_price(self, strike, a, sigma):
+        tdelta      = self.tdelta
+        bond_strike = 1 / (1 + strike * self.tau)
+        B_ts        = (1 - np.exp(-a * tdelta)) / a
+        sigma_p     = sigma * np.sqrt((1 - np.exp(-2 * a * self.tfix)) / (2 * a)) * B_ts
+        h           = 1 / sigma_p * np.log(self.eur_end_df / (self.eur_start_df * bond_strike)) + sigma_p / 2
+        zbp         = bond_strike * self.eur_start_df * norm.cdf(-h + sigma_p) - self.eur_end_df * norm.cdf(-h)
+        price       = (1 + strike * self.tau) * zbp * self.estr_pay_df / self.eur_end_df
+        return price
+    
+    def isin(self, parent_tenor: Tenor):
+        parent_tenor = clean_tenor(parent_tenor)
+        return self.tenor <= parent_tenor
+    
+    def rebuild(self):
+        return Caplet(
+            self.trade_date,
+            self.tenor,
+            self.cap_tenor_bucket,
+            self.fixing_date,
+            self.accrual_start,
+            self.accrual_end,
+            self.payment_date,
+            self.tau,
+            self.tfix,
+            self.eur_start_df,
+            self.eur_end_df,
+            self.estr_pay_df,
+            self.fwd_rate,
+            self.caplet_vol
+        )
+
+    def rebuild_rates(self, market):
+        eur_start_df  = market.euribor_curve[self.accrual_start]
+        eur_end_df    = market.euribor_curve[self.accrual_end]
+        estr_pay_df   = market.estr_curve[self.payment_date]
+        fwd_rate      = (eur_start_df / eur_end_df - 1) / self.tau
+        return Caplet(
+            self.trade_date,
+            self.tenor,
+            self.cap_tenor_bucket,
+            self.fixing_date,
+            self.accrual_start,
+            self.accrual_end,
+            self.payment_date,
+            self.tau,
+            self.tfix,
+            eur_start_df,
+            eur_end_df,
+            estr_pay_df,
+            fwd_rate,
+            self.caplet_vol
+        )
+
+    def rebuild_time(self, market):
+        tfix = day_count_fraction(market.trade_date, self.fixing_date, "ACT/365")
+        return Caplet(
+            self.trade_date,
+            self.tenor,
+            self.cap_tenor_bucket,
+            self.fixing_date,
+            self.accrual_start,
+            self.accrual_end,
+            self.payment_date,
+            self.tau,
+            tfix,
+            self.eur_start_df,
+            self.eur_end_df,
+            self.estr_pay_df,
+            self.fwd_rate,
+            self.caplet_vol
+        )
+
+    def rebuild_vol(self, market, strike):
+        caplet_vol = market.caplet_surface.caplet_vol(self.fixing_date, strike)
+        return Caplet(
+            self.trade_date,
+            self.tenor,
+            self.cap_tenor_bucket,
+            self.fixing_date,
+            self.accrual_start,
+            self.accrual_end,
+            self.payment_date,
+            self.tau,
+            self.tfix,
+            self.eur_start_df,
+            self.eur_end_df,
+            self.estr_pay_df,
+            self.fwd_rate,
+            caplet_vol,
+        )
+    
+    def __repr__(self):
+        return f"Caplet({self.tenor.tenor}, Vol: {self.caplet_vol:.4f}, Fwd Rate: {self.fwd_rate:.4%})"
+
 class Cap:
     def __init__(self,
                  trade_date: Date,
@@ -342,36 +357,6 @@ class Cap:
         self.cap_vol = cap_vol
         self.strike = strike
         self.caplets = caplets
-
-    def bachelier_price(self, flat_vol=False):
-        price = 0
-
-        if len(self.caplets) > 0:
-            for caplet in self.caplets.values():
-                if flat_vol:
-                    price += caplet.bachelier_price(self.strike, self.cap_vol)
-                else:
-                    price += caplet.bachelier_price(self.strike)
-
-        return price
-    
-    def jamshidian_price(self, a, sigma):
-        price = 0
-
-        if len(self.caplets) > 0:
-            for caplet in self.caplets.values():
-                price += caplet.jamshidian_price(self.strike, a, sigma)
-
-        return price
-    
-    def stripping_pricing_error(self):
-        return self.bachelier_price(True) - self.bachelier_price()
-    
-    def hw_pricing_error(self, a, sigma):
-        return self.bachelier_price(True) - self.jamshidian_price(a, sigma)
-    
-    def __repr__(self):
-        return f"Cap({self.tenor.tenor}, Vol: {self.cap_vol:.4f}, Strike: {self.strike:.4%})"
 
     @classmethod
     def from_market_strike(cls, market, strike=None, flat_vol=False):
@@ -468,5 +453,55 @@ class Cap:
             caplet_list[t] = Caplet(market.trade_date, t, bucket, fixing_date[n], accrual_start[n], accrual_end[n], payment_date[n], tau[n], tfix[n], eur_start_df[n], eur_end_df[n], estr_pay_df[n], fwd_rate[n], vols[n])
 
         return cls(market.trade_date, tenor, cap_vol, strike, caplet_list)
+
+    def bachelier_price(self, flat_vol=False):
+        price = 0
+
+        if len(self.caplets) > 0:
+            for caplet in self.caplets.values():
+                if flat_vol:
+                    price += caplet.bachelier_price(self.strike, self.cap_vol)
+                else:
+                    price += caplet.bachelier_price(self.strike)
+
+        return price
+    
+    def jamshidian_price(self, a, sigma):
+        price = 0
+
+        if len(self.caplets) > 0:
+            for caplet in self.caplets.values():
+                price += caplet.jamshidian_price(self.strike, a, sigma)
+
+        return price
+    
+    def stripping_pricing_error(self):
+        return self.bachelier_price(True) - self.bachelier_price()
+    
+    def hw_pricing_error(self, a, sigma):
+        return self.bachelier_price(True) - self.jamshidian_price(a, sigma)
+
+    def rebuild_vol(self, market):
+        # First cap vol
+        maturity = self.caplets[self.tenor.tenor].accrual_end
+        cap_vol  = market.cap_surface.cap_vol(maturity, self.strike)
+
+        # Caplet vol
+        caplets  = {tenor: caplet.rebuild_vol(market, self.strike) for tenor, caplet in self.caplets.items()}
+
+        return Cap(self.trade_date, self.tenor, cap_vol, self.strike, caplets)
+
+    def rebuild_rates(self, market):
+        # Only caplets
+        caplets = {tenor: caplet.rebuild_rates(market) for tenor, caplet in self.caplets.items()}
+        return Cap(self.trade_date, self.tenor, self.cap_vol, self.strike, caplets)
+
+    def rebuild_time(self, market):
+        # Only caplets
+        caplets = {tenor: caplet.rebuild_time(market) for tenor, caplet in self.caplets.items() if caplet.fixing_date > market.trade_date}
+        return Cap(self.trade_date, self.tenor, self.cap_vol, self.strike, caplets)
+
+    def __repr__(self):
+        return f"Cap({self.tenor.tenor}, Vol: {self.cap_vol:.4f}, Strike: {self.strike:.4%})"
 
 
