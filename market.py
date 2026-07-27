@@ -304,7 +304,7 @@ class Market:
     
     # 4. Day shift
     def day_shift(self, other):
-        return (other.trade_date - self.trade_date).astype(int)
+        return (self.trade_date - other.trade_date).astype(int)
 
     # 5. All shifts
     def mkt_shifts(self, other):
