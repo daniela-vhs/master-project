@@ -27,7 +27,7 @@ class Trade:
 
         # EURIBOR6M boundaries
         euribor_idx = np.where(pd.to_datetime(trade_maturity) <= pd.to_datetime(market.euribor_curve.maturities))[0].min()
-        euribor_tenors = market.euribor_curve.tenors[1 : euribor_idx + 1]
+        euribor_tenors = market.euribor_curve.tenors[1 : euribor_idx + 2]
         bounds["Rate"]["EURIBOR6M"] = euribor_tenors
 
         if isinstance(self.instrument, IRS):
@@ -54,7 +54,7 @@ class Trade:
         bounds["Vol"]["VolStrikes"] = vol_strikes
         return bounds
 
-    def delta(self, bumps, boundaries, curve, model="fmm"):
+    def delta(self, bumps, boundaries, curve, model="fmm", shifts=None):
         delta = []
 
         for tenor in boundaries["Rate"][curve]:
@@ -72,18 +72,24 @@ class Trade:
             value = (p_up - p_dn) / (2 * bump_bp / 10_000)
 
             if abs(value) > 1e-10:
-                delta.append(dict(
+                delta_value = dict(
                     TradeDate = bump["mid"].trade_date,
                     Source = curve,
                     RateTenor = tenor,
                     Measure = "Delta",
                     Order = 1,
                     Value = value * self.notional * self.position
-                ))
+                )
+
+                if shifts is not None:
+                    delta_value["RateShift"] = shifts[curve][tenor]
+                    delta_value["PnL"] = delta_value["RateShift"] * delta_value["Value"]
+
+                delta.append(delta_value)
 
         return delta
 
-    def gamma(self, bumps, boundaries, curve, model="fmm"):
+    def gamma(self, bumps, boundaries, curve, model="fmm", shifts=None):
         gamma = []
 
         for tenor in boundaries["Rate"][curve]:
@@ -103,18 +109,24 @@ class Trade:
             value = (p_up - 2 * p_md + p_dn) / (bump_bp / 10_000) ** 2
 
             if abs(value) > 1e-10:
-                gamma.append(dict(
+                gamma_value = dict(
                     TradeDate = bump["mid"].trade_date,
                     Source = curve,
                     RateTenor = tenor,
                     Measure = "Gamma",
                     Order = 2,
                     Value = value * self.notional * self.position
-                ))
+                )
+
+                if shifts is not None:
+                    gamma_value["RateShift"] = shifts[curve][tenor]
+                    gamma_value["PnL"] = 0.5 * gamma_value["RateShift"] ** 2 * gamma_value["Value"]
+
+                gamma.append(gamma_value)
 
         return gamma
 
-    def vega(self, bumps, boundaries, model="fmm"):
+    def vega(self, bumps, boundaries, model="fmm", shifts=None):
         vega = []
 
         if isinstance(self.instrument, IRS):
@@ -135,7 +147,7 @@ class Trade:
                 value = (p_up - p_dn) / (2 * bump["bp"])
         
                 if abs(value) > 1e-10:
-                    vega.append(dict(
+                    vega_value = dict(
                         TradeDate = bump["mid"].trade_date,
                         Source = "Vol",
                         VolTenor = tenor,
@@ -143,11 +155,17 @@ class Trade:
                         Measure = "Vega",
                         Order = 1,
                         Value = value * self.notional * self.position
-                    ))
+                    )
+
+                    if shifts is not None:
+                        vega_value["VolShift"] = shifts["CapVolSurface"][strike][tenor]
+                        vega_value["PnL"] = vega_value["VolShift"] * vega_value["Value"]
+
+                    vega.append(vega_value)
 
         return vega
 
-    def volga(self, bumps, boundaries, model="fmm"):
+    def volga(self, bumps, boundaries, model="fmm", shifts=None):
         volga = []
 
         if isinstance(self.instrument, IRS):
@@ -170,7 +188,7 @@ class Trade:
                 value = (p_up + p_dn - 2 * p_md) / (bump["bp"]) ** 2
         
                 if abs(value) > 1e-10:
-                    volga.append(dict(
+                    volga_value = dict(
                         TradeDate = bump["mid"].trade_date,
                         Source = "Vol",
                         VolTenor = tenor,
@@ -178,22 +196,28 @@ class Trade:
                         Measure = "Volga",
                         Order = 2,
                         Value = value * self.notional * self.position
-                    ))
+                    )
+
+                    if shifts is not None:
+                        volga_value["VolShift"] = shifts["CapVolSurface"][strike][tenor]
+                        volga_value["PnL"] = 0.5 * volga_value["VolShift"] ** 2 * volga_value["Value"]
+                    
+                    volga.append(volga_value)
 
         return volga
 
-    def vanna(self, bumps, boundaries, curve, model="fmm"):
+    def vanna(self, bumps, boundaries, curve, model="fmm", shifts=None):
         vanna = []
 
         if isinstance(self.instrument, IRS):
             return vanna
 
-        for strike in boundaries["Vol"]["VolStrikes"]:
-            for vol_tenor in boundaries["Vol"]["VolTenors"]:
+        for strike in boundaries["Vol"]["VolStrikes"][:2]:
+            for vol_tenor in boundaries["Vol"]["VolTenors"][:2]:
                 vbump = bumps["CapVolSurface"][strike][vol_tenor]
                 vbp   = vbump["bp"]
 
-                for rate_tenor in boundaries["Vol"]["RateTenors"][curve]:
+                for rate_tenor in boundaries["Vol"]["RateTenors"][curve][:2]:
                     rbump = bumps[curve][rate_tenor]
                     rbp   = rbump["bp"]
 
@@ -217,7 +241,7 @@ class Trade:
                     value = (rup_vup - rup_vdn - rdn_vup + rdn_vdn) / (2 * rbp / 10_000) / (2 * vbp)
 
                     if abs(value) > 1e-10:
-                        vanna.append(dict(
+                        vanna_value = dict(
                             TradeDate = self.instrument.trade_date,
                             Source = curve,
                             RateTenor = rate_tenor,
@@ -226,11 +250,18 @@ class Trade:
                             Measure = "Vanna",
                             Order = 2,
                             Value = value * self.notional * self.position
-                        ))
+                        )
+
+                        if shifts is not None:
+                            vanna_value["RateShift"] = shifts[curve][rate_tenor]
+                            vanna_value["VolShift"] = shifts["CapVolSurface"][strike][vol_tenor]
+                            vanna_value["PnL"] = vanna_value["Value"] * vanna_value["RateShift"] * vanna_value["VolShift"]
+
+                        vanna.append(vanna_value)
 
         return vanna
 
-    def theta(self, bumps, model="fmm"):
+    def theta(self, bumps, model="fmm", shifts=None):
         bump  = bumps["Time"]
         days  = (bump["up"].trade_date - self.instrument.trade_date).astype(int)
 
@@ -239,30 +270,39 @@ class Trade:
         elif model == "hw":
             value = (self.instrument.value(bump["up"], "jamshidian_price", bump["up"].hull_white.a, bump["up"].hull_white.sigma) - self.instrument.value(bump["mid"], "jamshidian_price", bump["mid"].hull_white.a, bump["mid"].hull_white.sigma)) / days
 
-        return [dict(
+        theta_value = dict(
             TradeDate = self.instrument.trade_date,
             Source = "Time",
             Measure = "Theta",
             Order = 1,
             Value = value * self.notional * self.position,
-        )]
+        )
 
-    def sens(self, bumps, boundaries, model="fmm"):
+        if shifts is not None:
+            theta_value["DayShift"] = shifts["Time"]
+            theta_value["PnL"] = theta_value["DayShift"] * theta_value["Value"]
+
+        return [theta_value]
+
+    def sens(self, bumps, boundaries, model="fmm", shifts=None):
         sens = []
-        sens.extend(self.delta(bumps, boundaries, "EURIBOR6M", model))
-        sens.extend(self.delta(bumps, boundaries, "ESTR", model))
-        sens.extend(self.gamma(bumps, boundaries, "EURIBOR6M", model))
-        sens.extend(self.gamma(bumps, boundaries, "ESTR", model))
-        sens.extend(self.theta(bumps, model))
+        sens.extend(self.delta(bumps, boundaries, "EURIBOR6M", model, shifts))
+        sens.extend(self.delta(bumps, boundaries, "ESTR", model, shifts))
+        sens.extend(self.gamma(bumps, boundaries, "EURIBOR6M", model, shifts))
+        sens.extend(self.gamma(bumps, boundaries, "ESTR", model, shifts))
+        sens.extend(self.theta(bumps, model, shifts))
 
         if isinstance(self.instrument, IRS):
             return sens
 
-        sens.extend(self.vega(bumps, boundaries, model))
-        sens.extend(self.volga(bumps, boundaries, model))
-        sens.extend(self.vanna(bumps, boundaries, "EURIBOR6M", model))
-        sens.extend(self.vanna(bumps, boundaries, "ESTR", model))
+        sens.extend(self.vega(bumps, boundaries, model, shifts))
+        sens.extend(self.volga(bumps, boundaries, model, shifts))
+        sens.extend(self.vanna(bumps, boundaries, "EURIBOR6M", model, shifts))
+        sens.extend(self.vanna(bumps, boundaries, "ESTR", model, shifts))
         return sens
+
+    def actual_pnl(self, mkt_start, mkt_end):
+        return self.value(mkt_end) - self.value(mkt_start)
 
 class Portfolio:
     def __init__(self, trades: list[Trade] = []):
