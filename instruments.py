@@ -477,6 +477,10 @@ class Cap:
                 price += caplet.jamshidian_price(self.strike, a, sigma)
 
         return price
+
+    def value(self, market, pricing_function="bachelier_price", *params):
+            cap = self.rebuild_market(market)
+            return getattr(cap, pricing_function)(*params)
     
     def stripping_pricing_error(self):
         return self.bachelier_price(True) - self.bachelier_price()
@@ -526,9 +530,5 @@ class Cap:
 
     def __repr__(self):
         return f"Cap({self.tenor.tenor}, Vol: {self.cap_vol:.4f}, Strike: {self.strike:.4%})"
-
-    def value(self, market):
-        cap = self.rebuild_market(market)
-        return cap.bachelier_price()
 
 
