@@ -304,7 +304,16 @@ class Market:
     
     # 4. Day shift
     def day_shift(self, other):
-        return (self.trade_date - other.trade_date).astype(int)
+        return (other.trade_date - self.trade_date).astype(int)
+
+    # 5. All shifts
+    def mkt_shifts(self, other):
+        shifts = dict()
+        shifts["ESTR"] = self.estr_shift(other)
+        shifts["EURIBOR6M"] = self.euribor_shift(other)
+        shifts["CapVolSurface"] = self.cap_vol_shift(other)
+        shifts["Time"] = self.day_shift(other)
+        return shifts
 
     # 3. Cap surface bump
     def cap_vol_bump(self, tenor, strike, bump=1, caplet_recalibration = True, hw_recalibration = True):
