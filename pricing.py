@@ -253,7 +253,7 @@ class Trade:
         sens.extend(self.delta(bumps, boundaries, "ESTR", model))
         sens.extend(self.gamma(bumps, boundaries, "EURIBOR6M", model))
         sens.extend(self.gamma(bumps, boundaries, "ESTR", model))
-        sens.extend(self.theta(bumps))
+        sens.extend(self.theta(bumps, model))
 
         if isinstance(self.instrument, IRS):
             return sens
