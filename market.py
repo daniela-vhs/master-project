@@ -349,13 +349,31 @@ class Market:
     def rebuild(self):
         return Market(self.trade_date, self.estr_curve, self.euribor_curve, self.caplet_surface, self.cap_surface, self.hull_white)
 
-    def generate_bumps(self, rate_bp=1, vol_bp=1, days=1, strike_support=1):
+    def generate_bumps(self, max_maturity, min_strike, max_strike, rate_bp=1, vol_bp=1, days=1, strike_support=1):
         bumps = dict()
         market = self.rebuild()
 
+        # Build supports
+        # Tenors
+        max_maturity = clean_date(max_maturity)
+        estr_idx = np.where(pd.to_datetime(max_maturity) <= self.estr_curve.maturities)[0].min()
+        estr_tenors = market.estr_curve.tenors[1 : estr_idx + 2]
+
+        euribor_idx = np.where(pd.to_datetime(max_maturity) <= self.euribor_curve.maturities)[0].min()
+        euribor_tenors = market.euribor_curve.tenors[1 : euribor_idx + 2]
+
+        vol_tenors_idx = np.where(pd.to_datetime(max_maturity) <= self.cap_surface.maturities)[0].min()
+        vol_tenors = self.cap_surface.tenors[ : vol_tenors_idx + 2]
+
+        # Strikes
+        min_strike_idx = np.where(self.cap_surface.strikes <= min_strike)[0].max()
+        max_strike_idx = np.where(self.cap_surface.strikes >= max_strike)[0].min()
+        all_strikes = self.caplet_surface.strikes
+        strikes_support = all_strikes[np.maximum(0, min_strike_idx - 2) : np.minimum(max_strike_idx + 3, len(all_strikes))]
+
         # Estr bumps
         estr_bump = dict()
-        for tenor in market.estr_curve.tenors[1:]:
+        for tenor in estr_tenors:
             estr_bump[tenor]         = dict()
             estr_bump[tenor]["up"]   = market.estr_bump(tenor, +rate_bp)
             estr_bump[tenor]["mid"]  = market
@@ -366,7 +384,7 @@ class Market:
 
         # Euribor bumps
         eur_bump = dict()
-        for tenor in market.euribor_curve.tenors[1:]:
+        for tenor in euribor_tenors:
             eur_bump[tenor]         = dict()
             eur_bump[tenor]["up"]   = market.euribor_bump(tenor, +rate_bp)
             eur_bump[tenor]["mid"]  = market
@@ -377,21 +395,20 @@ class Market:
 
         # Vol bumps
         # Decide boundary strikes for Hull-White regeneration
-        strikes = np.array(list(self.cap_surface.atm_strikes.values()))
+        atm_strikes = np.array(list(self.cap_surface.atm_strikes.values()))
 
-        min_strike = market.caplet_surface.strikes[np.where(market.caplet_surface.strikes <= strikes.min())[0].max()]
-        max_strike = market.caplet_surface.strikes[np.where(market.caplet_surface.strikes >= strikes.max())[0].min()]
-        min_strike_idx = np.where(self.cap_surface.strikes == min_strike)[0][0]
-        max_strike_idx = np.where(self.cap_surface.strikes == max_strike)[0][0]
-        all_strikes = np.array(self.cap_surface.strikes)
-        strike_target = all_strikes[np.maximum(min_strike_idx - strike_support + 1, 0) : np.minimum(max_strike_idx + strike_support, len(all_strikes))]
+        day_min_strike = all_strikes[np.where(all_strikes <= atm_strikes.min())[0].max()]
+        day_max_strike = all_strikes[np.where(all_strikes >= atm_strikes.max())[0].min()]
+        day_min_strike_idx = np.where(all_strikes == day_min_strike)[0][0]
+        day_max_strike_idx = np.where(all_strikes == day_max_strike)[0][0]
+        strikes_hw = all_strikes[np.maximum(day_min_strike_idx - strike_support + 1, 0) : np.minimum(day_max_strike_idx + strike_support, len(all_strikes))]
 
         vol_bump = dict()
-        for strike in market.caplet_surface.strikes[:]:
+        for strike in strikes_support:
             vol_bump[strike] = dict()
-            for tenor in market.cap_surface.tenors[:]:
+            for tenor in vol_tenors:
                 # Is hull white necessary?
-                if strike in strike_target:
+                if strike in strikes_hw:
                     hw_calibration = True
                 else:
                     hw_calibration = False
