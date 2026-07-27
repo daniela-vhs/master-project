@@ -368,9 +368,9 @@ class Market:
         eur_bump = dict()
         for tenor in market.euribor_curve.tenors[1:]:
             eur_bump[tenor]         = dict()
-            eur_bump[tenor]["up"]   = market.euribor_bump(tenor, +1)
+            eur_bump[tenor]["up"]   = market.euribor_bump(tenor, +rate_bp)
             eur_bump[tenor]["mid"]  = market
-            eur_bump[tenor]["down"] = market.euribor_bump(tenor, -1)
+            eur_bump[tenor]["down"] = market.euribor_bump(tenor, -rate_bp)
             eur_bump[tenor]["bp"]   = rate_bp
 
         bumps["EURIBOR6M"] = eur_bump
@@ -398,9 +398,9 @@ class Market:
 
                 # Bumps
                 vol_bump[strike][tenor]         = dict()
-                vol_bump[strike][tenor]["up"]   = market.cap_vol_bump(tenor, strike, +1, hw_recalibration=hw_calibration)
+                vol_bump[strike][tenor]["up"]   = market.cap_vol_bump(tenor, strike, +vol_bp, hw_recalibration=hw_calibration)
                 vol_bump[strike][tenor]["mid"]  = market
-                vol_bump[strike][tenor]["down"] = market.cap_vol_bump(tenor, strike, -1, hw_recalibration=hw_calibration)
+                vol_bump[strike][tenor]["down"] = market.cap_vol_bump(tenor, strike, -vol_bp, hw_recalibration=hw_calibration)
                 vol_bump[strike][tenor]["bp"]   = vol_bp
 
         bumps["CapVolSurface"] = vol_bump
