@@ -150,7 +150,10 @@ class IRS:
     def value(self, market, ul=None):
         fixed_pv = self.fixed_leg(market, ul)[1]
         float_pv = self.float_leg(market)
-        return float_pv - fixed_pv
+        val = float_pv - fixed_pv
+        if len(val) == 1:
+            return val[0]
+        return val
     
     def __repr__(self):
         return f"IRS({self.float_index}, {self.tenor.tenor}, {self.fixed_rate:.4%})"
@@ -523,5 +526,9 @@ class Cap:
 
     def __repr__(self):
         return f"Cap({self.tenor.tenor}, Vol: {self.cap_vol:.4f}, Strike: {self.strike:.4%})"
+
+    def value(self, market):
+        cap = self.rebuild_market(market)
+        return cap.bachelier_price()
 
 
