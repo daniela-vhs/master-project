@@ -105,13 +105,17 @@ class CapletVolSurface:
         vol_surface = df.reset_index().pivot(index="Tenor", columns="Strike", values="StrippedVol").reindex(tenors).to_numpy()
         return cls(trade_date, strikes, tenors, fixings, vol_surface)
     
-    def caplet_vol(self, fixing_date, strike):
-        target = (clean_date(fixing_date) - self.trade_date).astype(float) / 365
-        target = np.clip(target, self.tfix.min(), self.tfix.max())
-        strike = np.clip(strike, self.strikes.min(), self.strikes.max())
-        
-        smile = [np.sqrt(f(target) / target) for f in self.__tenor_interp]
-        return PchipInterpolator(self.strikes, smile)(strike)
+    def caplet_vol(self, fixing_dates, strike):
+        fixing_dates = np.atleast_1d(fixing_dates)
+        targets      = np.array([(i - self.trade_date).astype(int) for i in fixing_dates]) / 365
+        targets      = np.clip(targets, self.tfix.min(), self.tfix.max())
+        strike       = np.clip(strike, self.strikes.min(), self.strikes.max())
+
+        # Smile matrix
+        smile_matrix = np.column_stack([np.sqrt(f(targets) / targets) for f in self.__tenor_interp])
+
+        value = PchipInterpolator(self.strikes, smile_matrix, axis=1)(strike)
+        return value[0] if len(value) == 1 else value
     
     def bump(self, tenor, bump=1):
         tenor = clean_tenor(tenor)
@@ -295,5 +299,45 @@ class Market:
     # 4. Day shift
     def day_shift(self, other):
         return (self.trade_date - other.trade_date).astype(int)
+
+    # 3. Cap surface bump
+    def cap_vol_bump(self, tenor, strike, bump=1, caplet_recalibration = True, hw_recalibration = True):
+        new_cap_surface = self.cap_surface.bump(tenor, strike, bump)
+        new_mkt = Market(
+            self.trade_date,
+            self.estr_curve,
+            self.euribor_curve,
+            self.caplet_surface,
+            new_cap_surface,
+            self.hull_white
+        )
+
+        # Caplet Surface Recalibration
+        if caplet_recalibration:
+            caplet_vols = np.array(self.caplet_surface.vols)
+            strike_idy  = np.where(self.caplet_surface.strikes == strike)[0][0]
+            new_caplet_vols = np.array([i[0] for i in caplet_stripping(new_mkt, strike).values()])
+
+            caplet_vols[:, strike_idy] = new_caplet_vols
+
+            new_caplet_surface = CapletVolSurface(self.trade_date, self.caplet_surface.strikes, self.caplet_surface.tenors, self.caplet_surface.fixings, caplet_vols)
+            new_mkt = Market(
+                        self.trade_date,
+                        self.estr_curve,
+                        self.euribor_curve,
+                        new_caplet_surface,
+                        new_cap_surface,
+                        self.hull_white
+                    )
+
+        else: new_caplet_surface = self.caplet_surface
+
+        # Hull White Recalibration
+        if hw_recalibration:
+            new_hull_white = self.hull_white.calibrate(new_mkt)
+        else:
+            new_hull_white = self.hull_white
+            
+        return Market(self.trade_date, self.estr_curve, self.euribor_curve, new_caplet_surface, new_cap_surface, new_hull_white)
 
 

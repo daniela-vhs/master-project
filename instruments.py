@@ -487,7 +487,10 @@ class Cap:
         cap_vol  = market.cap_surface.cap_vol(maturity, self.strike)
 
         # Caplet vol
-        caplets  = {tenor: caplet.rebuild_vol(market, self.strike) for tenor, caplet in self.caplets.items()}
+        caplets = {tenor: caplet.rebuild() for tenor, caplet in self.caplets.items()}
+        new_vols = market.caplet_surface.caplet_vol([i.fixing_date for i in caplets.values()], self.strike)
+        for i, caplet in enumerate(caplets.values()):
+            caplet.caplet_vol = new_vols[i]
 
         return Cap(self.trade_date, self.tenor, cap_vol, self.strike, caplets)
 
