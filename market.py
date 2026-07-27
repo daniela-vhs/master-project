@@ -10,8 +10,9 @@ from scipy.interpolate import PchipInterpolator, interp1d
 
 Date: TypeAlias = np.datetime64
 
-vol_data    = pd.read_parquet("clean_data/vols.parquet").set_index(["Date", "Tenor", "IsATM", "Strike"])
+vol_data     = pd.read_parquet("clean_data/vols.parquet").set_index(["Date", "Tenor", "IsATM", "Strike"])
 caplets_data = pd.read_parquet("clean_data/cap_stripping.parquet").set_index(["TradeDate", "Tenor", "IsATM", "Strike"])
+rates_data   = pd.read_parquet("clean_data/rates.parquet").set_index(["Date", "Curve", "Tenor"])
 
 class CapVolSurface:
     def __init__(self,
@@ -32,6 +33,8 @@ class CapVolSurface:
         total_var = self.vols ** 2 * self.t_mat[:, None]
         self.__tenor_interp = [PchipInterpolator(self.t_mat, i) for i in total_var.T]
 
+        self.atm_strikes = dict(sorted({tenor: rate / 100 for tenor, rate in rates_data.xs((self.trade_date, "EURIBOR6M"), level=("Date", "Curve")).Rate.to_dict().items() if Tenor(tenor) >= Tenor("3Y") and Tenor(tenor) <= Tenor("10Y")}.items(), key=lambda x: Tenor(x[0])))
+
     @classmethod
     def from_date(cls, trade_date):
         trade_date  = clean_date(trade_date)
@@ -40,11 +43,11 @@ class CapVolSurface:
         strikes     = np.sort(df.index.get_level_values("Strike").unique() / 100)
         tenors      = np.array(sorted([i for i in df.index.get_level_values("Tenor").unique() if Tenor(i) >= Tenor("3Y") and Tenor(i) <= Tenor("10Y")], key=lambda x: Tenor(x)))
         master      = schedule_generation(trade_date, tenors[-1], "Annual", pay_delay="0 Business Days", include_tenor=True).set_index("Tenor")
-        maturities  = [
+        maturities  = np.array([
             np.datetime64(pd.Timestamp(master.loc[t].AccrualEnd).date()) if t in master.index
             else np.datetime64(BusinessDay(trade_date, calendar=buscal).shift("2D", "following").shift(t, "modifiedfollowing").date)
             for t in tenors
-        ]
+        ])
         vol_surface = df.reset_index().pivot(index="Tenor", columns="Strike", values="Vol").reindex(tenors).to_numpy()
         
         return cls(trade_date, strikes, tenors, maturities, vol_surface)
@@ -266,8 +269,10 @@ class Market:
 
     # 4. Day bump
     def day_bump(self, bump=1):
-        new_date = clean_date(self.trade_date + pd.Timedelta(days=bump))
-        return Market(new_date, self.estr_curve, self.euribor_curve, self.caplet_surface, self.cap_surface, self.hull_white)
+        dates = vol_data.index.get_level_values("Date").unique()
+        date_idx = np.where(self.trade_date == dates)[0][0]
+        next_date = dates[date_idx + bump]
+        return Market(next_date, self.estr_curve, self.euribor_curve, self.caplet_surface, self.cap_surface, self.hull_white)
 
     # ------------------ #
     # REAL MARKET SHIFTS #
@@ -343,5 +348,67 @@ class Market:
 
     def rebuild(self):
         return Market(self.trade_date, self.estr_curve, self.euribor_curve, self.caplet_surface, self.cap_surface, self.hull_white)
+
+    def generate_bumps(self, rate_bp=1, vol_bp=1, days=1, strike_support=1):
+        bumps = dict()
+        market = self.rebuild()
+
+        # Estr bumps
+        estr_bump = dict()
+        for tenor in market.estr_curve.tenors[1:]:
+            estr_bump[tenor]         = dict()
+            estr_bump[tenor]["up"]   = market.estr_bump(tenor, +rate_bp)
+            estr_bump[tenor]["mid"]  = market
+            estr_bump[tenor]["down"] = market.estr_bump(tenor, -rate_bp)
+            estr_bump[tenor]["bp"]   = rate_bp
+
+        bumps["ESTR"] = estr_bump
+
+        # Euribor bumps
+        eur_bump = dict()
+        for tenor in market.euribor_curve.tenors[1:]:
+            eur_bump[tenor]         = dict()
+            eur_bump[tenor]["up"]   = market.euribor_bump(tenor, +1)
+            eur_bump[tenor]["mid"]  = market
+            eur_bump[tenor]["down"] = market.euribor_bump(tenor, -1)
+            eur_bump[tenor]["bp"]   = rate_bp
+
+        bumps["EURIBOR6M"] = eur_bump
+
+        # Vol bumps
+        # Decide boundary strikes for Hull-White regeneration
+        strikes = np.array(list(self.cap_surface.atm_strikes.values()))
+
+        min_strike = market.caplet_surface.strikes[np.where(market.caplet_surface.strikes <= strikes.min())[0].max()]
+        max_strike = market.caplet_surface.strikes[np.where(market.caplet_surface.strikes >= strikes.max())[0].min()]
+        min_strike_idx = np.where(self.cap_surface.strikes == min_strike)[0][0]
+        max_strike_idx = np.where(self.cap_surface.strikes == max_strike)[0][0]
+        all_strikes = np.array(self.cap_surface.strikes)
+        strike_target = all_strikes[np.maximum(min_strike_idx - strike_support + 1, 0) : np.minimum(max_strike_idx + strike_support, len(all_strikes))]
+
+        vol_bump = dict()
+        for strike in market.caplet_surface.strikes[:]:
+            vol_bump[strike] = dict()
+            for tenor in market.cap_surface.tenors[:]:
+                # Is hull white necessary?
+                if strike in strike_target:
+                    hw_calibration = True
+                else:
+                    hw_calibration = False
+
+                # Bumps
+                vol_bump[strike][tenor]         = dict()
+                vol_bump[strike][tenor]["up"]   = market.cap_vol_bump(tenor, strike, +1, hw_recalibration=hw_calibration)
+                vol_bump[strike][tenor]["mid"]  = market
+                vol_bump[strike][tenor]["down"] = market.cap_vol_bump(tenor, strike, -1, hw_recalibration=hw_calibration)
+                vol_bump[strike][tenor]["bp"]   = vol_bp
+
+        bumps["CapVolSurface"] = vol_bump
+
+        bumps["Time"] = dict()
+        bumps["Time"]["up"] = self.day_bump(days)
+        bumps["Time"]["mid"] = market
+
+        return bumps
 
 
