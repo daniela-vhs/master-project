@@ -37,8 +37,11 @@ class Trade:
         trade_strike = self.instrument.strike
 
         ## Rate
-        vol_rate_tenors = market.euribor_curve.tenors[1 : euribor_idx + 2]
-        bounds["Vol"]["RateTenors"] = vol_rate_tenors
+        eur_vol_rate_tenors = market.euribor_curve.tenors[1 : euribor_idx + 2]
+        estr_vol_rate_tenors = market.estr_curve.tenors[1 : estr_idx + 2]
+        bounds["Vol"]["RateTenors"] = dict()
+        bounds["Vol"]["RateTenors"]["ESTR"] = estr_vol_rate_tenors
+        bounds["Vol"]["RateTenors"]["EURIBOR6M"] = eur_vol_rate_tenors
 
         ## Tenors
         vol_tenor_idx = np.where(pd.to_datetime(trade_maturity) <= np.array(market.cap_surface.maturities))[0].min()
@@ -66,7 +69,7 @@ class Trade:
                 p_up = self.instrument.value(bump["up"])
                 p_dn = self.instrument.value(bump["down"])
 
-            value = (p_up - p_dn) / (2 * bump_bp / 10_000) * self.notional * self.position
+            value = (p_up - p_dn) / (2 * bump_bp / 10_000)
 
             if abs(value) > 1e-10:
                 delta.append(dict(
@@ -75,7 +78,7 @@ class Trade:
                     RateTenor = tenor,
                     Measure = "Delta",
                     Order = 1,
-                    Value = value
+                    Value = value * self.notional * self.position
                 ))
 
         return delta
@@ -97,7 +100,7 @@ class Trade:
                 p_md = self.instrument.value(bump["mid"])
                 p_dn = self.instrument.value(bump["down"])
 
-            value = (p_up - 2 * p_md + p_dn) / (bump_bp / 10_000) ** 2 * self.notional * self.position
+            value = (p_up - 2 * p_md + p_dn) / (bump_bp / 10_000) ** 2
 
             if abs(value) > 1e-10:
                 gamma.append(dict(
@@ -106,7 +109,7 @@ class Trade:
                     RateTenor = tenor,
                     Measure = "Gamma",
                     Order = 2,
-                    Value = value
+                    Value = value * self.notional * self.position
                 ))
 
         return gamma
@@ -129,7 +132,7 @@ class Trade:
                     p_up = self.instrument.value(bump["up"])
                     p_dn = self.instrument.value(bump["down"])
                 
-                value = (p_up - p_dn) / (2 * bump["bp"]) * self.notional * self.position
+                value = (p_up - p_dn) / (2 * bump["bp"])
         
                 if abs(value) > 1e-10:
                     vega.append(dict(
@@ -139,7 +142,7 @@ class Trade:
                         Strike = strike,
                         Measure = "Vega",
                         Order = 1,
-                        Value = value
+                        Value = value * self.notional * self.position
                     ))
 
         return vega
@@ -164,7 +167,7 @@ class Trade:
                     p_md = self.instrument.value(bump["mid"])
                     p_dn = self.instrument.value(bump["down"])
                 
-                value = (p_up + p_dn - 2 * p_md) / (bump["bp"]) ** 2 * self.notional * self.position
+                value = (p_up + p_dn - 2 * p_md) / (bump["bp"]) ** 2
         
                 if abs(value) > 1e-10:
                     volga.append(dict(
@@ -174,7 +177,7 @@ class Trade:
                         Strike = strike,
                         Measure = "Volga",
                         Order = 2,
-                        Value = value
+                        Value = value * self.notional * self.position
                     ))
 
         return volga
@@ -190,7 +193,7 @@ class Trade:
                 vbump = bumps["CapVolSurface"][strike][vol_tenor]
                 vbp   = vbump["bp"]
 
-                for rate_tenor in boundaries["Vol"]["RateTenors"]:
+                for rate_tenor in boundaries["Vol"]["RateTenors"][curve]:
                     rbump = bumps[curve][rate_tenor]
                     rbp   = rbump["bp"]
 
@@ -222,7 +225,7 @@ class Trade:
                             Strike = strike,
                             Measure = "Vanna",
                             Order = 2,
-                            Value = value
+                            Value = value * self.notional * self.position
                         ))
 
         return vanna
@@ -241,7 +244,7 @@ class Trade:
             Source = "Time",
             Measure = "Theta",
             Order = 1,
-            Value = value,
+            Value = value * self.notional * self.position,
         )]
 
     def sens(self, bumps, boundaries, model="fmm"):
