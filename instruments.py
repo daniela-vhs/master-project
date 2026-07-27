@@ -70,7 +70,10 @@ class IRS:
         return cls(trade_date, tenor, conv["settlement"], fix_leg["day_count"], fix_leg["pay_freq"], fix_leg["pay_delay"], flt_leg["day_count"], flt_leg["pay_freq"], flt_leg["pay_delay"], flt_leg["fixing_lag"], 0, curve, buscal)
 
     def days_to_maturity(self, market):
-        return np.int64((np.maximum(self.fixed_schedule.AccrualEnd.max(), self.float_schedule.AccrualEnd.max()) - market.trade_date).days)
+        return np.int64((self.get_maturity() - market.trade_date).days)
+
+    def get_maturity(self):
+        return clean_date(np.maximum(self.fixed_schedule.AccrualEnd.max(), self.float_schedule.AccrualEnd.max()))
     
     def fixed_leg(self, market, fixed_rate=None):
         fixed_rate = np.atleast_1d(self.fixed_rate) if fixed_rate is None else np.atleast_1d(fixed_rate)
@@ -249,7 +252,10 @@ class Caplet:
         return caplet_list
 
     def days_to_maturity(self, mkt):
-        return (self.fixing_date - mkt.trade_date).astype(int)
+        return (self.get_maturity() - mkt.trade_date).astype(int)
+
+    def get_maturity(self):
+        return clean_date(self.fixing_date)
 
     def bachelier_price(self, strike, vol=None):
         vol   = self.caplet_vol if vol is None else vol
@@ -464,7 +470,10 @@ class Cap:
         return cls(market.trade_date, tenor, cap_vol, strike, caplet_list)
 
     def days_to_maturity(self, market):
-        return (max(i[1].accrual_end for i in self.caplets.items()) - market.trade_date).astype(int)
+        return (self.get_maturity() - market.trade_date).astype(int)
+
+    def get_maturity(self):
+        return clean_date(max(i[1].accrual_end for i in self.caplets.items()))
 
     def bachelier_price(self, flat_vol=False):
         price = 0
