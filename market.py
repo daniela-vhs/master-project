@@ -341,4 +341,7 @@ class Market:
             
         return Market(self.trade_date, self.estr_curve, self.euribor_curve, new_caplet_surface, new_cap_surface, new_hull_white)
 
+    def rebuild(self):
+        return Market(self.trade_date, self.estr_curve, self.euribor_curve, self.caplet_surface, self.cap_surface, self.hull_white)
+
 
