@@ -37,7 +37,7 @@ class CapVolSurface:
         trade_date  = clean_date(trade_date)
         df          = vol_data.xs((trade_date, False), level=("Date", "IsATM"))
         strikes     = np.sort(df.index.get_level_values("Strike").unique() / 100)
-        tenors      = np.array(sorted(df.index.get_level_values("Tenor").unique(), key=lambda x: Tenor(x)))
+        tenors      = np.array(sorted([i for i in df.index.get_level_values("Tenor").unique() if Tenor(i) >= Tenor("3Y") and Tenor(i) <= Tenor("10Y")], key=lambda x: Tenor(x)))
         master      = schedule_generation(trade_date, tenors[-1], "Annual", pay_delay="0 Business Days", include_tenor=True).set_index("Tenor")
         maturities  = [
             np.datetime64(pd.Timestamp(master.loc[t].AccrualEnd).date()) if t in master.index
