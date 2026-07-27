@@ -17,7 +17,7 @@ class Trade:
         return str(self.instrument) + f". Notional: {self.notional:0,.0f}. Position: {position}."
 
     def sens_boundaries(self, market):
-        trade_maturity = market.trade_date + np.timedelta64(self.instrument.days_to_maturity(market))
+        trade_maturity = self.instrument.maturity
         bounds = dict(Rate = dict(), Vol = dict())
 
         # ESTR boundaries
@@ -319,5 +319,21 @@ class Portfolio:
 
     def __repr__(self):
         return "Portfolio:\n" + "\n".join([f"- {str(i)}" for i in self.trades])
+
+    def generate_bumps(self, market):
+        max_maturity = np.array([i.instrument.maturity for i in self.trades]).max()
+        strikes      = np.array([i.instrument.strike for i in self.trades])
+        min_strike   = strikes.min()
+        max_strike   = strikes.max()
+        return market.generate_bumps(max_maturity, min_strike, max_strike)
+
+    def sens(self, market, bumps, model="fmm", shifts=None):
+        sens = []
+
+        for trade in self.trades:
+            bounds = trade.sens_boundaries(market)
+            sens.extend(trade.sens(bumps, bounds, model, shifts))
+
+        return sens
 
 
