@@ -481,6 +481,23 @@ class Cap:
     def hw_pricing_error(self, a, sigma):
         return self.bachelier_price(True) - self.jamshidian_price(a, sigma)
 
+    def rebuild_market(self, market):
+            # New cap vol
+            maturity = sorted(self.caplets.items(), key=lambda x: Tenor(x[0]))[-1][1].accrual_end
+            cap_vol = market.cap_surface.cap_vol(maturity, self.strike)
+    
+            # New caplet vols and tfix, remove fixed caplets from list
+            caplets = {tenor: caplet.rebuild_rates(market) for tenor, caplet in self.caplets.items() if caplet.fixing_date > market.trade_date}
+            fixings = [i.fixing_date for i in caplets.values()]
+            tfix    = day_count_fraction(np.repeat(market.trade_date, len(fixings)), fixings, "ACT/365")
+            caplet_vols = market.caplet_surface.caplet_vol(fixings, self.strike)
+    
+            for n, caplet in enumerate(caplets.values()):
+                caplet.caplet_vol = caplet_vols[n]
+                caplet.tfix = tfix[n]
+    
+            return Cap(self.trade_date, self.tenor, cap_vol, self.strike, caplets)
+
     def rebuild_vol(self, market):
         # First cap vol
         maturity = self.caplets[self.tenor.tenor].accrual_end
