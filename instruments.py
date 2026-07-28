@@ -494,23 +494,34 @@ class Cap:
     def hw_pricing_error(self, market, a, sigma):
         return self.bachelier_price(market) - self.jamshidian_price(market, a, sigma)
 
-    def rebuild_market(self, market):
+    def rebuild_market(self, market): # AI Optimization
         # New cap vol
         maturity = sorted(self.caplets.items(), key=lambda x: Tenor(x[0]))[-1][1].accrual_end
         cap_vol = market.cap_surface.cap_vol(maturity, self.strike)
 
-        # New caplet vols and tfix, do not remove fixed or dead caplets from list, only rebuild non-dead ones
-        caplets = {tenor: caplet.rebuild_rates(market) if caplet.status(market) == "Live" else caplet.rebuild() for tenor, caplet in self.caplets.items()}
+        # Copy all caplets; vectorize the rebuild of the live ones (single curve/surface calls)
+        caplets = {tenor: caplet.rebuild() for tenor, caplet in self.caplets.items()}
+        live    = [c for c in caplets.values() if c.status(market) == "Live"]
 
-        # Only update vol if caplet is not fixed or dead
-        live_caplets = {tenor: caplet for tenor, caplet in caplets.items() if caplet.status(market) == "Live"}
-        fixings      = [i.fixing_date for i in live_caplets.values()]
-        tfix         = day_count_fraction(np.repeat(market.trade_date, len(fixings)), fixings, "ACT/365")
-        caplet_vols  = market.caplet_surface.caplet_vol(fixings, self.strike)
+        if len(live) > 0:
+            starts  = np.array([c.accrual_start for c in live], dtype="datetime64[D]")
+            ends    = np.array([c.accrual_end   for c in live], dtype="datetime64[D]")
+            pays    = np.array([c.payment_date  for c in live], dtype="datetime64[D]")
+            fixings = [c.fixing_date for c in live]
 
-        for n, caplet in enumerate(live_caplets.values()):
-            caplet.caplet_vol = caplet_vols[n]
-            caplet.tfix = tfix[n]
+            eur_start = np.atleast_1d(market.euribor_curve.discount(starts))
+            eur_end   = np.atleast_1d(market.euribor_curve.discount(ends))
+            estr_pay  = np.atleast_1d(market.estr_curve.discount(pays))
+            tfix      = np.atleast_1d(day_count_fraction(np.repeat(market.trade_date, len(live)), fixings, "ACT/365"))
+            vols      = np.atleast_1d(market.caplet_surface.caplet_vol(fixings, self.strike))
+
+            for n, c in enumerate(live):
+                c.eur_start_df = eur_start[n]
+                c.eur_end_df   = eur_end[n]
+                c.estr_pay_df  = estr_pay[n]
+                c.fwd_rate     = (eur_start[n] / eur_end[n] - 1) / c.tau
+                c.tfix         = tfix[n]
+                c.caplet_vol   = vols[n]
 
         return Cap(self.trade_date, self.tenor, cap_vol, self.strike, caplets)
 

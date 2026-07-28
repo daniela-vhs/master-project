@@ -16,6 +16,19 @@ class Trade:
         position = "Pay" if self.position == 1 else "Rcv"
         return str(self.instrument) + f". Notional: {self.notional:0,.0f}. Position: {position}."
 
+    def _price(self, market, model="fmm", cache=None): # AI Optimization
+        """Price the instrument on a bump market, memoized per Market object within one sens pass."""
+        key = id(market)
+        if cache is not None and key in cache:
+            return cache[key]
+        if isinstance(self.instrument, Cap) and model == "hw":
+            p = self.instrument.value(market, "jamshidian_price", market.hull_white.a, market.hull_white.sigma)
+        else:
+            p = self.instrument.value(market)
+        if cache is not None:
+            cache[key] = p
+        return p
+
     def sens_boundaries(self, market):
         trade_maturity = self.instrument.maturity
         bounds = dict(Rate = dict(), Vol = dict())
@@ -54,20 +67,15 @@ class Trade:
         bounds["Vol"]["VolStrikes"] = vol_strikes
         return bounds
 
-    def delta(self, bumps, boundaries, curve, model="fmm", shifts=None):
+    def delta(self, bumps, boundaries, curve, model="fmm", shifts=None, cache=None):
         delta = []
 
         for tenor in boundaries["Rate"][curve]:
             bump    = bumps[curve][tenor]
             bump_bp = bumps[curve][tenor]["bp"]
 
-            if isinstance(self.instrument, Cap) and model == "hw":
-                p_up = self.instrument.value(bump["up"], "jamshidian_price", bump["up"].hull_white.a, bump["up"].hull_white.sigma)
-                p_dn = self.instrument.value(bump["down"], "jamshidian_price", bump["down"].hull_white.a, bump["down"].hull_white.sigma)
-
-            elif isinstance(self.instrument, IRS) or model == "fmm":
-                p_up = self.instrument.value(bump["up"])
-                p_dn = self.instrument.value(bump["down"])
+            p_up = self._price(bump["up"],   model, cache)
+            p_dn = self._price(bump["down"], model, cache)
 
             value = (p_up - p_dn) / (2 * bump_bp / 10_000)
 
@@ -89,22 +97,16 @@ class Trade:
 
         return delta
 
-    def gamma(self, bumps, boundaries, curve, model="fmm", shifts=None):
+    def gamma(self, bumps, boundaries, curve, model="fmm", shifts=None, cache=None):
         gamma = []
 
         for tenor in boundaries["Rate"][curve]:
             bump    = bumps[curve][tenor]
             bump_bp = bumps[curve][tenor]["bp"]
 
-            if isinstance(self.instrument, Cap) and model == "hw":
-                p_up = self.instrument.value(bump["up"], "jamshidian_price", bump["up"].hull_white.a, bump["up"].hull_white.sigma)
-                p_md = self.instrument.value(bump["mid"], "jamshidian_price", bump["mid"].hull_white.a, bump["mid"].hull_white.sigma)
-                p_dn = self.instrument.value(bump["down"], "jamshidian_price", bump["down"].hull_white.a, bump["down"].hull_white.sigma)
-
-            elif isinstance(self.instrument, IRS) or model == "fmm":
-                p_up = self.instrument.value(bump["up"])
-                p_md = self.instrument.value(bump["mid"])
-                p_dn = self.instrument.value(bump["down"])
+            p_up = self._price(bump["up"],   model, cache)
+            p_dn = self._price(bump["down"], model, cache)
+            p_md = self._price(bump["mid"],  model, cache)
 
             value = (p_up - 2 * p_md + p_dn) / (bump_bp / 10_000) ** 2
 
@@ -126,7 +128,7 @@ class Trade:
 
         return gamma
 
-    def vega(self, bumps, boundaries, model="fmm", shifts=None):
+    def vega(self, bumps, boundaries, model="fmm", shifts=None, cache=None):
         vega = []
 
         if isinstance(self.instrument, IRS):
@@ -136,13 +138,8 @@ class Trade:
             for tenor in boundaries["Vol"]["VolTenors"]:
                 bump = bumps["CapVolSurface"][strike][tenor]
 
-                if model == "hw":
-                    p_up = self.instrument.value(bump["up"], "jamshidian_price", bump["up"].hull_white.a, bump["up"].hull_white.sigma)
-                    p_dn = self.instrument.value(bump["down"], "jamshidian_price", bump["down"].hull_white.a, bump["down"].hull_white.sigma)
-    
-                elif model == "fmm":
-                    p_up = self.instrument.value(bump["up"])
-                    p_dn = self.instrument.value(bump["down"])
+                p_up = self._price(bump["up"],   model, cache)
+                p_dn = self._price(bump["down"], model, cache)
                 
                 value = (p_up - p_dn) / (2 * bump["bp"])
         
@@ -165,7 +162,7 @@ class Trade:
 
         return vega
 
-    def volga(self, bumps, boundaries, model="fmm", shifts=None):
+    def volga(self, bumps, boundaries, model="fmm", shifts=None, cache=None):
         volga = []
 
         if isinstance(self.instrument, IRS):
@@ -175,15 +172,9 @@ class Trade:
             for tenor in boundaries["Vol"]["VolTenors"]:
                 bump = bumps["CapVolSurface"][strike][tenor]
 
-                if model == "hw":
-                    p_up = self.instrument.value(bump["up"], "jamshidian_price", bump["up"].hull_white.a, bump["up"].hull_white.sigma)
-                    p_md = self.instrument.value(bump["mid"], "jamshidian_price", bump["mid"].hull_white.a, bump["mid"].hull_white.sigma)
-                    p_dn = self.instrument.value(bump["down"], "jamshidian_price", bump["down"].hull_white.a, bump["down"].hull_white.sigma)
-    
-                elif model == "fmm":
-                    p_up = self.instrument.value(bump["up"])
-                    p_md = self.instrument.value(bump["mid"])
-                    p_dn = self.instrument.value(bump["down"])
+                p_up = self._price(bump["up"],   model, cache)
+                p_dn = self._price(bump["down"], model, cache)
+                p_md = self._price(bump["mid"],  model, cache)
                 
                 value = (p_up + p_dn - 2 * p_md) / (bump["bp"]) ** 2
         
@@ -263,6 +254,85 @@ class Trade:
 
         return vanna
 
+    def vanna(self, bumps, boundaries, curve, model="fmm", shifts=None): # AI Optimization
+        vanna = []
+
+        if isinstance(self.instrument, IRS):
+            return vanna
+
+        # Precompute caplet-vol vectors once per (strike, vol_tenor, direction):
+        # they depend only on the bumped caplet surface, not on the rate bump.
+        base    = bumps["Time"]["mid"]
+        ref     = self.instrument.rebuild_market(base)
+        live_t  = [t for t, c in ref.caplets.items() if c.status(base) == "Live"]
+        fixings = [ref.caplets[t].fixing_date for t in live_t]
+
+        vol_cache = dict()
+        for strike in boundaries["Vol"]["VolStrikes"]:
+            for vol_tenor in boundaries["Vol"]["VolTenors"]:
+                vbump = bumps["CapVolSurface"][strike][vol_tenor]
+                vol_cache[(strike, vol_tenor, "up")]   = np.atleast_1d(vbump["up"].caplet_surface.caplet_vol(fixings, self.instrument.strike))
+                vol_cache[(strike, vol_tenor, "down")] = np.atleast_1d(vbump["down"].caplet_surface.caplet_vol(fixings, self.instrument.strike))
+
+        def price(cap, vols, vmarket, a=None, sigma=None):
+            for n, t in enumerate(live_t):
+                cap.caplets[t].caplet_vol = vols[n]
+            if model == "hw":
+                return cap.jamshidian_price(vmarket, a, sigma)
+            return cap.bachelier_price(vmarket)
+
+        for rate_tenor in boundaries["Vol"]["RateTenors"][curve]:
+            rbump = bumps[curve][rate_tenor]
+            rbp   = rbump["bp"]
+
+            # Rebuild the rate legs ONCE per rate tenor. rebuild_market (not rebuild_rates)
+            # so tfix is measured from the evaluation date, not from inception.
+            r_up = self.instrument.rebuild_market(rbump["up"])
+            r_dn = self.instrument.rebuild_market(rbump["down"])
+
+            for strike in boundaries["Vol"]["VolStrikes"]:
+                for vol_tenor in boundaries["Vol"]["VolTenors"]:
+                    vbump = bumps["CapVolSurface"][strike][vol_tenor]
+                    vbp   = vbump["bp"]
+                    v_up  = vol_cache[(strike, vol_tenor, "up")]
+                    v_dn  = vol_cache[(strike, vol_tenor, "down")]
+
+                    if model == "hw":
+                        au, su = vbump["up"].hull_white.a,   vbump["up"].hull_white.sigma
+                        ad, sd = vbump["down"].hull_white.a, vbump["down"].hull_white.sigma
+                        rup_vup = price(r_up, v_up, vbump["up"],   au, su)
+                        rup_vdn = price(r_up, v_dn, vbump["down"], ad, sd)
+                        rdn_vup = price(r_dn, v_up, vbump["up"],   au, su)
+                        rdn_vdn = price(r_dn, v_dn, vbump["down"], ad, sd)
+                    else:
+                        rup_vup = price(r_up, v_up, vbump["up"])
+                        rup_vdn = price(r_up, v_dn, vbump["down"])
+                        rdn_vup = price(r_dn, v_up, vbump["up"])
+                        rdn_vdn = price(r_dn, v_dn, vbump["down"])
+
+                    value = (rup_vup - rup_vdn - rdn_vup + rdn_vdn) / (2 * rbp / 10_000) / (2 * vbp)
+
+                    if abs(value) > 1e-10:
+                        vanna_value = dict(
+                            TradeDate = rbump["mid"].trade_date,
+                            Source = curve,
+                            RateTenor = rate_tenor,
+                            VolTenor = vol_tenor,
+                            Strike = strike,
+                            Measure = "Vanna",
+                            Order = 2,
+                            Value = value * self.notional * self.position
+                        )
+
+                        if shifts is not None:
+                            vanna_value["RateShift"] = shifts[curve][rate_tenor]
+                            vanna_value["VolShift"] = shifts["CapVolSurface"][strike][vol_tenor]
+                            vanna_value["PnL"] = vanna_value["Value"] * vanna_value["RateShift"] * vanna_value["VolShift"]
+
+                        vanna.append(vanna_value)
+
+        return vanna
+
     def theta(self, bumps, model="fmm", shifts=None):
         bump  = bumps["Time"]
         days  = (bump["up"].trade_date - bump["mid"].trade_date).astype(int)
@@ -288,17 +358,18 @@ class Trade:
 
     def sens(self, bumps, boundaries, model="fmm", shifts=None):
         sens = []
-        sens.extend(self.delta(bumps, boundaries, "EURIBOR6M", model, shifts))
-        sens.extend(self.delta(bumps, boundaries, "ESTR", model, shifts))
-        sens.extend(self.gamma(bumps, boundaries, "EURIBOR6M", model, shifts))
-        sens.extend(self.gamma(bumps, boundaries, "ESTR", model, shifts))
+        cache = dict()
+        sens.extend(self.delta(bumps, boundaries, "EURIBOR6M", model, shifts, cache))
+        sens.extend(self.delta(bumps, boundaries, "ESTR", model, shifts, cache))
+        sens.extend(self.gamma(bumps, boundaries, "EURIBOR6M", model, shifts, cache))
+        sens.extend(self.gamma(bumps, boundaries, "ESTR", model, shifts, cache))
         sens.extend(self.theta(bumps, model, shifts))
 
         if isinstance(self.instrument, IRS):
             return sens
 
-        sens.extend(self.vega(bumps, boundaries, model, shifts))
-        sens.extend(self.volga(bumps, boundaries, model, shifts))
+        sens.extend(self.vega(bumps, boundaries, model, shifts, cache))
+        sens.extend(self.volga(bumps, boundaries, model, shifts, cache))
         sens.extend(self.vanna(bumps, boundaries, "EURIBOR6M", model, shifts))
         sens.extend(self.vanna(bumps, boundaries, "ESTR", model, shifts))
         return sens

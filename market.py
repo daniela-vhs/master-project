@@ -14,6 +14,16 @@ vol_data     = pd.read_parquet("clean_data/vols.parquet").set_index(["Date", "Te
 caplets_data = pd.read_parquet("clean_data/cap_stripping.parquet").set_index(["TradeDate", "Tenor", "IsATM", "Strike"])
 rates_data   = pd.read_parquet("clean_data/rates.parquet").set_index(["Date", "Curve", "Tenor"])
 
+# --- AI --- #
+from functools import lru_cache
+
+@lru_cache(maxsize=8)
+def _par_curve_cached(trade_date, curve):
+    """One ParCurve per (date, curve): schedules are identical across all bumps of a date.
+    Callers mutate a quote's rate and MUST restore it."""
+    return ParCurve(trade_date, curve)
+# --- AI --- #
+
 class CapVolSurface:
     def __init__(self,
         trade_date,
@@ -170,39 +180,29 @@ class Market:
     # ----- #
     # BUMPS #
     # ----- #
-    # 1. ESTR curve bump
+    # 1. ESTR curve bump --- AI Optimization
     def estr_bump(self, tenor, bump=1):
-        par_curve = ParCurve(self.trade_date, "ESTR")
-        bumped   = par_curve.instruments[tenor]
+        par_curve = _par_curve_cached(self.trade_date, "ESTR")
+        original  = par_curve.instruments[tenor].rate
+        par_curve.instruments[tenor].rate = original + bump / 10_000
+        try:
+            zero_curve = Bootstrapper(par_curve).build()
+        finally:
+            par_curve.instruments[tenor].rate = original
+        return Market(self.trade_date, zero_curve, self.euribor_curve,
+                    self.caplet_surface, self.cap_surface, self.hull_white)
 
-        bumped.rate += bump / 10_000
-        par_curve.instruments[tenor] = bumped
-        zero_curve = Bootstrapper(par_curve).build()
-        return Market(
-            self.trade_date,
-            zero_curve,
-            self.euribor_curve,
-            self.caplet_surface,
-            self.cap_surface,
-            self.hull_white
-            )
-
-    # 2. EURIBOR curve bump
+    # 2. EURIBOR curve bump --- AI Optimization
     def euribor_bump(self, tenor, bump=1):
-        par_curve = ParCurve(self.trade_date, "EURIBOR6M")
-        bumped   = par_curve.instruments[tenor]
-
-        bumped.rate += bump / 10_000
-        par_curve.instruments[tenor] = bumped
-        zero_curve = Bootstrapper(par_curve, self.estr_curve).build()
-        return Market(
-            self.trade_date,
-            self.estr_curve,
-            zero_curve,
-            self.caplet_surface,
-            self.cap_surface,
-            self.hull_white
-            )
+        par_curve = _par_curve_cached(self.trade_date, "EURIBOR6M")
+        original  = par_curve.instruments[tenor].rate
+        par_curve.instruments[tenor].rate = original + bump / 10_000
+        try:
+            zero_curve = Bootstrapper(par_curve, self.estr_curve).build()
+        finally:
+            par_curve.instruments[tenor].rate = original
+        return Market(self.trade_date, self.estr_curve, zero_curve,
+                    self.caplet_surface, self.cap_surface, self.hull_white)
 
     # 3. Cap surface bump
     def cap_vol_bump(self, tenor, strike, bump=1, caplet_recalibration = True, hw_recalibration = True):
