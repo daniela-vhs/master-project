@@ -24,16 +24,16 @@ class HullWhite:
         data = hw_data.loc[date].to_dict()
         return cls(date, data["a"], data["sigma"], data["ResidualError"], data["AtBound"])
 
-    def __target_price(self, cap_list):
-        return {tenor: cap.bachelier_price() for tenor, cap in cap_list.items()}
+    def __target_price(self, cap_list, market):
+        return {tenor: cap.bachelier_price(market) for tenor, cap in cap_list.items()}
 
-    def __hw_error(self, params, cap_list, targets):
+    def __hw_error(self, params, cap_list, targets, market):
         sse = 0
         for cap in cap_list.values():
-            sse += (targets[cap.tenor.tenor] - cap.jamshidian_price(params[0], params[1])) ** 2
+            sse += (targets[cap.tenor.tenor] - cap.jamshidian_price(market, params[0], params[1])) ** 2
         return sse
 
-    def __minimizer(self, cap_list, targets, random_start = False):
+    def __minimizer(self, cap_list, targets, market, random_start = False):
         # Bounds
         a_bound     = (0.001, 1)
         sigma_bound = (0.0001, None)
@@ -46,7 +46,7 @@ class HullWhite:
             guess = (self.a, self.sigma)
 
         # Optimizer
-        result = minimize(self.__hw_error, guess, args=(cap_list, targets), bounds=(a_bound, sigma_bound), method="L-BFGS-B")
+        result = minimize(self.__hw_error, guess, args=(cap_list, targets, market), bounds=(a_bound, sigma_bound), method="L-BFGS-B")
         params = result.x
         error  = result.fun
 
@@ -63,15 +63,15 @@ class HullWhite:
 
     def calibrate(self, market, n_tests = 0):
         caps    = Cap.from_market(market)["ATM"]
-        targets = self.__target_price(caps)
-        best    = self.__minimizer(caps, targets, False)
+        targets = self.__target_price(caps, market)
+        best    = self.__minimizer(caps, targets, market, False)
 
         for _ in range(n_tests):
             if "error" not in best:
-                best = self.__minimizer(caps, targets, True)
+                best = self.__minimizer(caps, targets, market, True)
 
             else:
-                new = self.__minimizer(caps, targets, True)
+                new = self.__minimizer(caps, targets, market, True)
                 if new["error"] < best["error"]:
                     best = new
 
@@ -85,14 +85,14 @@ class HullWhite:
 
     def initial_calibrate(self, market, rel_tol_a=0.02, rel_tol_sigma=0.01, patience=3, max_tests=50):
         caps    = Cap.from_market(market)["ATM"]
-        targets = self.__target_price(caps)
+        targets = self.__target_price(caps, market)
 
-        best         = self.__minimizer(caps, targets, random_start=True)
+        best         = self.__minimizer(caps, targets, market, random_start=True)
         stable_count = 0
         n_tests      = 1
 
         while stable_count < patience and n_tests < max_tests:
-            new = self.__minimizer(caps, targets, random_start=True)
+            new = self.__minimizer(caps, targets, market, random_start=True)
             n_tests += 1
 
             if new["error"] < best["error"]:

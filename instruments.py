@@ -276,20 +276,9 @@ class Caplet:
     
     def rebuild(self):
         return Caplet(
-            self.trade_date,
-            self.tenor,
-            self.cap_tenor_bucket,
-            self.fixing_date,
-            self.accrual_start,
-            self.accrual_end,
-            self.payment_date,
-            self.tau,
-            self.tfix,
-            self.eur_start_df,
-            self.eur_end_df,
-            self.estr_pay_df,
-            self.fwd_rate,
-            self.caplet_vol
+            self.trade_date, self.tenor, self.cap_tenor_bucket, self.fixing_date,
+            self.accrual_start, self.accrual_end, self.payment_date, self.tau, self.tfix,
+            self.eur_start_df, self.eur_end_df, self.estr_pay_df, self.fwd_rate, self.caplet_vol
         )
 
     def rebuild_rates(self, market):
@@ -297,61 +286,64 @@ class Caplet:
         eur_end_df    = market.euribor_curve[self.accrual_end]
         estr_pay_df   = market.estr_curve[self.payment_date]
         fwd_rate      = (eur_start_df / eur_end_df - 1) / self.tau
+
         return Caplet(
-            self.trade_date,
-            self.tenor,
-            self.cap_tenor_bucket,
-            self.fixing_date,
-            self.accrual_start,
-            self.accrual_end,
-            self.payment_date,
-            self.tau,
-            self.tfix,
-            eur_start_df,
-            eur_end_df,
-            estr_pay_df,
-            fwd_rate,
-            self.caplet_vol
+            self.trade_date, self.tenor, self.cap_tenor_bucket, self.fixing_date,
+            self.accrual_start, self.accrual_end, self.payment_date, self.tau, self.tfix,
+            eur_start_df, eur_end_df, estr_pay_df, fwd_rate, self.caplet_vol
         )
 
     def rebuild_time(self, market):
         tfix = day_count_fraction(market.trade_date, self.fixing_date, "ACT/365")
         return Caplet(
-            self.trade_date,
-            self.tenor,
-            self.cap_tenor_bucket,
-            self.fixing_date,
-            self.accrual_start,
-            self.accrual_end,
-            self.payment_date,
-            self.tau,
-            tfix,
-            self.eur_start_df,
-            self.eur_end_df,
-            self.estr_pay_df,
-            self.fwd_rate,
-            self.caplet_vol
+            self.trade_date, self.tenor, self.cap_tenor_bucket, self.fixing_date,
+            self.accrual_start, self.accrual_end, self.payment_date, self.tau, tfix,
+            self.eur_start_df, self.eur_end_df, self.estr_pay_df, self.fwd_rate, self.caplet_vol
         )
 
     def rebuild_vol(self, market, strike):
         caplet_vol = market.caplet_surface.caplet_vol(self.fixing_date, strike)
         return Caplet(
-            self.trade_date,
-            self.tenor,
-            self.cap_tenor_bucket,
-            self.fixing_date,
-            self.accrual_start,
-            self.accrual_end,
-            self.payment_date,
-            self.tau,
-            self.tfix,
-            self.eur_start_df,
-            self.eur_end_df,
-            self.estr_pay_df,
-            self.fwd_rate,
-            caplet_vol,
+            self.trade_date, self.tenor, self.cap_tenor_bucket, self.fixing_date,
+            self.accrual_start, self.accrual_end, self.payment_date, self.tau, self.tfix,
+            self.eur_start_df, self.eur_end_df, self.estr_pay_df, self.fwd_rate, caplet_vol,
         )
-    
+
+    def rebuild_market(self, market, strike):
+        tfix = day_count_fraction(market.trade_date, self.fixing_date, "ACT/365")
+        eur_start_df = market.euribor_curve.discount(self.accrual_start)
+        eur_end_df = market.euribor_curve.discount(self.accrual_end)
+        estr_pay_df = market.estr_curve.discount(self.payment_date)
+        fwd_rate = (eur_start_df / eur_end_df - 1) / self.tau
+        caplet_vol = market.caplet_surface.caplet_vol(self.fixing_date, strike)
+
+        return Caplet(
+            self.trade_date, self.tenor, self.cap_tenor_bucket, self.fixing_date,
+            self.accrual_start, self.accrual_end, self.payment_date, self.tau, tfix,
+            eur_start_df, eur_end_df, estr_pay_df, fwd_rate, caplet_vol
+        )
+
+    def status(self, market):
+        # Live
+        if market.trade_date < self.fixing_date:    return "Live"
+        elif market.trade_date < self.payment_date: return "Fixed"
+        return "Dead"
+
+    def payoff(self, strike):
+        fixed_rate = get_fixing(self.fixing_date, "EURIBOR6M")
+        return max(fixed_rate - strike, 0) * self.tau
+
+    def value(self, market, strike, pricing_function="bachelier_price", *params):
+        status = self.status(market)
+        if status == "Live":    return getattr(self, pricing_function)(strike, *params)
+        elif status == "Fixed": return self.payoff(strike) * market.estr_curve.discount(self.payment_date)
+        return 0.0
+
+    def realized(self, market, strike):
+        if market.trade_date == self.payment_date:
+            return self.payoff(strike)
+        return 0.0
+
     def __repr__(self):
         return f"Caplet({self.tenor.tenor}, Vol: {self.caplet_vol:.4f}, Fwd Rate: {self.fwd_rate:.4%})"
 
@@ -470,53 +462,64 @@ class Cap:
     def days_to_maturity(self, market):
         return (self.maturity - market.trade_date).astype(int)
 
-    def bachelier_price(self, flat_vol=False):
+    def bachelier_price(self, market, flat_vol=False):
         price = 0
 
         if len(self.caplets) > 0:
             for caplet in self.caplets.values():
                 if flat_vol:
-                    price += caplet.bachelier_price(self.strike, self.cap_vol)
+                    price += caplet.value(market, self.strike, "bachelier_price", self.cap_vol)
                 else:
-                    price += caplet.bachelier_price(self.strike)
+                    price += caplet.value(market, self.strike, "bachelier_price")
 
         return price
     
-    def jamshidian_price(self, a, sigma):
+    def jamshidian_price(self, market, a, sigma):
         price = 0
 
         if len(self.caplets) > 0:
             for caplet in self.caplets.values():
-                price += caplet.jamshidian_price(self.strike, a, sigma)
+                price += caplet.value(market, self.strike, "jamshidian_price", a, sigma)
 
         return price
 
     def value(self, market, pricing_function="bachelier_price", *params):
         cap = self.rebuild_market(market)
-        return getattr(cap, pricing_function)(*params)
+        return getattr(cap, pricing_function)(market, *params)
+
+    def realized(self, market):
+        realized = 0
+
+        for caplet in self.caplets.values():
+            realized += caplet.realized(market, self.strike)
+        
+        return realized
     
-    def stripping_pricing_error(self):
-        return self.bachelier_price(True) - self.bachelier_price()
+    def stripping_pricing_error(self, market):
+        return self.bachelier_price(market, True) - self.bachelier_price(market)
     
-    def hw_pricing_error(self, a, sigma):
-        return self.bachelier_price(True) - self.jamshidian_price(a, sigma)
+    def hw_pricing_error(self, market, a, sigma):
+        return self.bachelier_price(market) - self.jamshidian_price(market, a, sigma)
 
     def rebuild_market(self, market):
-            # New cap vol
-            maturity = sorted(self.caplets.items(), key=lambda x: Tenor(x[0]))[-1][1].accrual_end
-            cap_vol = market.cap_surface.cap_vol(maturity, self.strike)
-    
-            # New caplet vols and tfix, remove fixed caplets from list
-            caplets = {tenor: caplet.rebuild_rates(market) for tenor, caplet in self.caplets.items() if caplet.fixing_date > market.trade_date}
-            fixings = [i.fixing_date for i in caplets.values()]
-            tfix    = day_count_fraction(np.repeat(market.trade_date, len(fixings)), fixings, "ACT/365")
-            caplet_vols = market.caplet_surface.caplet_vol(fixings, self.strike)
-    
-            for n, caplet in enumerate(caplets.values()):
-                caplet.caplet_vol = caplet_vols[n]
-                caplet.tfix = tfix[n]
-    
-            return Cap(self.trade_date, self.tenor, cap_vol, self.strike, caplets)
+        # New cap vol
+        maturity = sorted(self.caplets.items(), key=lambda x: Tenor(x[0]))[-1][1].accrual_end
+        cap_vol = market.cap_surface.cap_vol(maturity, self.strike)
+
+        # New caplet vols and tfix, do not remove fixed or dead caplets from list, only rebuild non-dead ones
+        caplets = {tenor: caplet.rebuild_rates(market) if caplet.status(market) == "Live" else caplet.rebuild() for tenor, caplet in self.caplets.items()}
+
+        # Only update vol if caplet is not fixed or dead
+        live_caplets = {tenor: caplet for tenor, caplet in caplets.items() if caplet.status(market) == "Live"}
+        fixings      = [i.fixing_date for i in live_caplets.values()]
+        tfix         = day_count_fraction(np.repeat(market.trade_date, len(fixings)), fixings, "ACT/365")
+        caplet_vols  = market.caplet_surface.caplet_vol(fixings, self.strike)
+
+        for n, caplet in enumerate(live_caplets.values()):
+            caplet.caplet_vol = caplet_vols[n]
+            caplet.tfix = tfix[n]
+
+        return Cap(self.trade_date, self.tenor, cap_vol, self.strike, caplets)
 
     def rebuild_vol(self, market):
         # First cap vol
@@ -525,20 +528,23 @@ class Cap:
 
         # Caplet vol
         caplets = {tenor: caplet.rebuild() for tenor, caplet in self.caplets.items()}
-        new_vols = market.caplet_surface.caplet_vol([i.fixing_date for i in caplets.values()], self.strike)
-        for i, caplet in enumerate(caplets.values()):
+        live_caplets = {tenor: caplet for tenor, caplet in caplets.items() if caplet.status(market) == "Live"}
+
+        new_vols = market.caplet_surface.caplet_vol([i.fixing_date for i in live_caplets.values()], self.strike)
+
+        for i, caplet in enumerate(live_caplets.values()):
             caplet.caplet_vol = new_vols[i]
 
         return Cap(self.trade_date, self.tenor, cap_vol, self.strike, caplets)
 
     def rebuild_rates(self, market):
         # Only caplets
-        caplets = {tenor: caplet.rebuild_rates(market) for tenor, caplet in self.caplets.items()}
+        caplets = {tenor: caplet.rebuild_rates(market) if caplet.status(market) == "Live" else caplet.rebuild() for tenor, caplet in self.caplets.items()}
         return Cap(self.trade_date, self.tenor, self.cap_vol, self.strike, caplets)
 
     def rebuild_time(self, market):
-        # Only caplets
-        caplets = {tenor: caplet.rebuild_time(market) for tenor, caplet in self.caplets.items() if caplet.fixing_date > market.trade_date}
+        # Only non-dead caplets
+        caplets = {tenor: caplet.rebuild_time(market) if caplet.status(market) == "Live" else caplet.rebuild() for tenor, caplet in self.caplets.items()}
         return Cap(self.trade_date, self.tenor, self.cap_vol, self.strike, caplets)
 
     def __repr__(self):

@@ -13,12 +13,12 @@ Date: TypeAlias = np.datetime64
 vols = pd.read_parquet("clean_data/vols.parquet").set_index(["Date", "Tenor", "IsATM", "Strike"]).sort_index()
 
 # Objective Function
-def objective(guess, cap, target):
+def objective(guess, market, cap, target):
     for caplet in cap.caplets.values():
         if caplet.cap_tenor_bucket == cap.tenor:
             caplet.caplet_vol = guess
 
-    return cap.bachelier_price() - target
+    return cap.bachelier_price(market) - target
 
 # Stripping Algorithm
 def caplet_stripping(market, strike=None):
@@ -34,8 +34,8 @@ def caplet_stripping(market, strike=None):
                 if vol_tenor == caplet.cap_tenor_bucket.tenor:
                     caplet.caplet_vol = vol[0]
 
-        target                = cap.bachelier_price(flat_vol=True)
-        result                = brentq(objective, 0.1, 500, args=(cap, target), full_output=True)
+        target                = cap.bachelier_price(market, flat_vol=True)
+        result                = brentq(objective, 0.1, 500, args=(market, cap, target), full_output=True)
         stripped_vols[anchor] = (result[0], cap)
 
     return stripped_vols
