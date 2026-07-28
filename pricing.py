@@ -227,16 +227,18 @@ class Trade:
                     rdn_vdn = self.instrument.rebuild_rates(rbump["down"]).rebuild_vol(vbump["down"])
 
                     if model == "fmm":
-                        rup_vup = rup_vup.bachelier_price()
-                        rup_vdn = rup_vdn.bachelier_price()
-                        rdn_vup = rdn_vup.bachelier_price()
-                        rdn_vdn = rdn_vdn.bachelier_price()
+                        # p_up = self.instrument.value(bump["up"])
+                        rup_vup = rup_vup.bachelier_price(vbump["up"])
+                        rup_vdn = rup_vdn.bachelier_price(vbump["down"])
+                        rdn_vup = rdn_vup.bachelier_price(vbump["up"])
+                        rdn_vdn = rdn_vdn.bachelier_price(vbump["down"])
 
                     elif model == "hw":
-                        rup_vup = rup_vup.jamshidian_price(vbump["up"].hull_white.a, vbump["up"].hull_white.sigma)
-                        rup_vdn = rup_vdn.jamshidian_price(vbump["down"].hull_white.a, vbump["down"].hull_white.sigma)
-                        rdn_vup = rdn_vup.jamshidian_price(vbump["up"].hull_white.a, vbump["up"].hull_white.sigma)
-                        rdn_vdn = rdn_vdn.jamshidian_price(vbump["down"].hull_white.a, vbump["down"].hull_white.sigma)
+                        # p_up = self.instrument.value(bump["up"], "jamshidian_price", bump["up"].hull_white.a, bump["up"].hull_white.sigma)
+                        rup_vup = rup_vup.jamshidian_price(vbump["up"], vbump["up"].hull_white.a, vbump["up"].hull_white.sigma)
+                        rup_vdn = rup_vdn.jamshidian_price(vbump["down"], vbump["down"].hull_white.a, vbump["down"].hull_white.sigma)
+                        rdn_vup = rdn_vup.jamshidian_price(vbump["up"], vbump["up"].hull_white.a, vbump["up"].hull_white.sigma)
+                        rdn_vdn = rdn_vdn.jamshidian_price(vbump["down"], vbump["down"].hull_white.a, vbump["down"].hull_white.sigma)
 
                     value = (rup_vup - rup_vdn - rdn_vup + rdn_vdn) / (2 * rbp / 10_000) / (2 * vbp)
 
@@ -304,23 +306,26 @@ class Trade:
     def actual_pnl(self, market_start, market_end):
         return self.value(market_end) - self.value(market_start)
 
-    def split_pnl(self, market_start, market_end):
-        cap  = self.instrument.rebuild_market(market_start)
-        base = cap.bachelier_price() * self.notional * self.position
+    def split_pnl(self, current_market, previous_market):
+        cap  = self.instrument.rebuild_market(previous_market)
+        base = cap.bachelier_price(previous_market) * self.notional * self.position
 
-        rate_only = cap.rebuild_rates(market_end).bachelier_price() * self.notional * self.position - base
-        vol_only  = cap.rebuild_vol(market_end).bachelier_price()   * self.notional * self.position - base
-        time      = cap.rebuild_time(market_end).bachelier_price()  * self.notional * self.position - base
-        total     = cap.rebuild_market(market_end).bachelier_price()* self.notional * self.position - base
+        rate_only = cap.rebuild_rates(current_market).bachelier_price(current_market)  * self.notional * self.position - base
+        vol_only  = cap.rebuild_vol(current_market).bachelier_price(current_market)    * self.notional * self.position - base
+        time      = cap.rebuild_time(current_market).bachelier_price(current_market)   * self.notional * self.position - base
+        total     = cap.rebuild_market(current_market).bachelier_price(current_market) * self.notional * self.position - base
+        realized  = cap.rebuild_market(current_market).realized(current_market)        * self.notional * self.position
         cross     = total - rate_only - vol_only - time
 
         return [dict(
-            ValueDate = market_end.trade_date,
-            RatePnL = rate_only,
-            VolPnL = vol_only,
-            TimePnL = time,
-            CrossPnL = cross,
-            TotalPnL = total,
+            ValueDate   = current_market.trade_date,
+            PrevDate    = previous_market.trade_date,
+            RatePnL     = rate_only,
+            VolPnL      = vol_only,
+            TimePnL     = time,
+            CrossPnL    = cross,
+            TotalPnL    = total,
+            RealizedPnL = realized,
         )]
 
     def pnl_attribution(self, sens):
