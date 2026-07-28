@@ -230,7 +230,7 @@ class Market:
     # 3. Cap surface bump
     def cap_vol_bump(self, tenor, strike, bump=1, caplet_recalibration = True, hw_recalibration = True):
         new_cap_surface = self.cap_surface.bump(tenor, strike, bump)
-        new_mkt = Market(
+        new_market = Market(
             self.trade_date,
             self.estr_curve,
             self.euribor_curve,
@@ -245,10 +245,10 @@ class Market:
             new_caplet_vols = np.zeros_like(caplet_vols)
 
             for n, strike in enumerate([-0.005, -0.0025, -0.00125, 0, 0.005, 0.01, 0.015, 0.02, 0.025, 0.03, 0.04, 0.05]):
-                new_caplet_vols[:, n] = [i[0] for i in caplet_stripping(new_mkt, strike).values()]
+                new_caplet_vols[:, n] = [i[0] for i in caplet_stripping(new_market, strike).values()]
 
             new_caplet_surface = CapletVolSurface(self.trade_date, self.caplet_surface.strikes, self.caplet_surface.tenors, self.caplet_surface.fixings, new_caplet_vols)
-            new_mkt = Market(
+            new_market = Market(
                         self.trade_date,
                         self.estr_curve,
                         self.euribor_curve,
@@ -261,7 +261,7 @@ class Market:
 
         # Hull White Recalibration
         if hw_recalibration:
-            new_hull_white = self.hull_white.calibrate(new_mkt)
+            new_hull_white = self.hull_white.calibrate(new_market)
         else:
             new_hull_white = self.hull_white
             
@@ -307,7 +307,7 @@ class Market:
         return (self.trade_date - other.trade_date).astype(int)
 
     # 5. All shifts
-    def mkt_shifts(self, other):
+    def market_shifts(self, other):
         shifts = dict()
         shifts["ESTR"] = self.estr_shift(other)
         shifts["EURIBOR6M"] = self.euribor_shift(other)
@@ -318,7 +318,7 @@ class Market:
     # 3. Cap surface bump
     def cap_vol_bump(self, tenor, strike, bump=1, caplet_recalibration = True, hw_recalibration = True):
         new_cap_surface = self.cap_surface.bump(tenor, strike, bump)
-        new_mkt = Market(
+        new_market = Market(
             self.trade_date,
             self.estr_curve,
             self.euribor_curve,
@@ -331,12 +331,12 @@ class Market:
         if caplet_recalibration:
             caplet_vols = np.array(self.caplet_surface.vols)
             strike_idy  = np.where(self.caplet_surface.strikes == strike)[0][0]
-            new_caplet_vols = np.array([i[0] for i in caplet_stripping(new_mkt, strike).values()])
+            new_caplet_vols = np.array([i[0] for i in caplet_stripping(new_market, strike).values()])
 
             caplet_vols[:, strike_idy] = new_caplet_vols
 
             new_caplet_surface = CapletVolSurface(self.trade_date, self.caplet_surface.strikes, self.caplet_surface.tenors, self.caplet_surface.fixings, caplet_vols)
-            new_mkt = Market(
+            new_market = Market(
                         self.trade_date,
                         self.estr_curve,
                         self.euribor_curve,
@@ -349,7 +349,7 @@ class Market:
 
         # Hull White Recalibration
         if hw_recalibration:
-            new_hull_white = self.hull_white.calibrate(new_mkt)
+            new_hull_white = self.hull_white.calibrate(new_market)
         else:
             new_hull_white = self.hull_white
             
