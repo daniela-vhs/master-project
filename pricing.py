@@ -50,7 +50,7 @@ class Trade:
 
         ## Strikes
         vol_strike_idx = (np.where(market.cap_surface.strikes < trade_strike)[0].max(), np.where(market.cap_surface.strikes > trade_strike)[0].min())
-        vol_strikes = market.cap_surface.strikes[vol_strike_idx[0] - 1 : vol_strike_idx[1] + 2]
+        vol_strikes = market.cap_surface.strikes[np.maximum(0, vol_strike_idx[0] - 1) : vol_strike_idx[1] + 2]
         bounds["Vol"]["VolStrikes"] = vol_strikes
         return bounds
 
@@ -244,7 +244,7 @@ class Trade:
 
                     if abs(value) > 1e-10:
                         vanna_value = dict(
-                            TradeDate = self.instrument.trade_date,
+                            TradeDate = rbump["mid"].trade_date,
                             Source = curve,
                             RateTenor = rate_tenor,
                             VolTenor = vol_tenor,
@@ -265,7 +265,7 @@ class Trade:
 
     def theta(self, bumps, model="fmm", shifts=None):
         bump  = bumps["Time"]
-        days  = (bump["up"].trade_date - self.instrument.trade_date).astype(int)
+        days  = (bump["up"].trade_date - bump["mid"].trade_date).astype(int)
 
         if isinstance(self.instrument, IRS) or model == "fmm":
             value = (self.instrument.value(bump["up"]) - self.instrument.value(bump["mid"])) / days
@@ -273,7 +273,7 @@ class Trade:
             value = (self.instrument.value(bump["up"], "jamshidian_price", bump["up"].hull_white.a, bump["up"].hull_white.sigma) - self.instrument.value(bump["mid"], "jamshidian_price", bump["mid"].hull_white.a, bump["mid"].hull_white.sigma)) / days
 
         theta_value = dict(
-            TradeDate = self.instrument.trade_date,
+            TradeDate = bump["mid"].trade_date,
             Source = "Time",
             Measure = "Theta",
             Order = 1,
@@ -348,8 +348,8 @@ class Trade:
         return pnl_explain
 
 class Portfolio:
-    def __init__(self, trades: list[Trade] = []):
-        self.trades = trades
+    def __init__(self, trades: list[Trade] = None):
+        self.trades = trades if trades is not None else []
 
     def append(self, trade):
         self.trades.append(trade)

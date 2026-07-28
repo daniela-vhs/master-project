@@ -170,29 +170,6 @@ class Market:
     # ----- #
     # BUMPS #
     # ----- #
-    # 1. ESTR Curve
-    def estr_bump(self, tenor, bump=1):
-        curve  = self.estr_curve
-        tenors = curve.tenors
-        mats   = curve.maturities
-        dfs    = np.array(curve.dfs)
-        idx    = np.where(tenors == tenor)
-        rate   = curve.continuous_rate(mats[idx])
-        tau    = (mats[idx][0] - self.trade_date).days / 360
-
-        # Compute bump
-        new_rate = rate + bump / 10_000
-        new_df   = np.exp(-new_rate * tau)
-
-        # Apply bump
-        dfs[idx] = new_df
-
-        # Create new bumped Zero Curve
-        new_curve = ZeroCurve(self.trade_date, tenors, mats, dfs, "ESTR", "ACT/360")
-
-        # Return new market object
-        return Market(self.trade_date, new_curve, self.euribor_curve, self.caplet_surface, self.cap_surface, self.hull_white)
-
     # 1. ESTR curve bump
     def estr_bump(self, tenor, bump=1):
         par_curve = ParCurve(self.trade_date, "ESTR")
@@ -242,12 +219,12 @@ class Market:
         # Caplet Surface Recalibration
         if caplet_recalibration:
             caplet_vols = np.array(self.caplet_surface.vols)
-            new_caplet_vols = np.zeros_like(caplet_vols)
+            strike_idy  = np.where(self.caplet_surface.strikes == strike)[0][0]
+            new_caplet_vols = np.array([i[0] for i in caplet_stripping(new_market, strike).values()])
 
-            for n, strike in enumerate([-0.005, -0.0025, -0.00125, 0, 0.005, 0.01, 0.015, 0.02, 0.025, 0.03, 0.04, 0.05]):
-                new_caplet_vols[:, n] = [i[0] for i in caplet_stripping(new_market, strike).values()]
+            caplet_vols[:, strike_idy] = new_caplet_vols
 
-            new_caplet_surface = CapletVolSurface(self.trade_date, self.caplet_surface.strikes, self.caplet_surface.tenors, self.caplet_surface.fixings, new_caplet_vols)
+            new_caplet_surface = CapletVolSurface(self.trade_date, self.caplet_surface.strikes, self.caplet_surface.tenors, self.caplet_surface.fixings, caplet_vols)
             new_market = Market(
                         self.trade_date,
                         self.estr_curve,
@@ -314,46 +291,6 @@ class Market:
         shifts["CapVolSurface"] = self.cap_vol_shift(other)
         shifts["Time"] = self.day_shift(other)
         return shifts
-
-    # 3. Cap surface bump
-    def cap_vol_bump(self, tenor, strike, bump=1, caplet_recalibration = True, hw_recalibration = True):
-        new_cap_surface = self.cap_surface.bump(tenor, strike, bump)
-        new_market = Market(
-            self.trade_date,
-            self.estr_curve,
-            self.euribor_curve,
-            self.caplet_surface,
-            new_cap_surface,
-            self.hull_white
-        )
-
-        # Caplet Surface Recalibration
-        if caplet_recalibration:
-            caplet_vols = np.array(self.caplet_surface.vols)
-            strike_idy  = np.where(self.caplet_surface.strikes == strike)[0][0]
-            new_caplet_vols = np.array([i[0] for i in caplet_stripping(new_market, strike).values()])
-
-            caplet_vols[:, strike_idy] = new_caplet_vols
-
-            new_caplet_surface = CapletVolSurface(self.trade_date, self.caplet_surface.strikes, self.caplet_surface.tenors, self.caplet_surface.fixings, caplet_vols)
-            new_market = Market(
-                        self.trade_date,
-                        self.estr_curve,
-                        self.euribor_curve,
-                        new_caplet_surface,
-                        new_cap_surface,
-                        self.hull_white
-                    )
-
-        else: new_caplet_surface = self.caplet_surface
-
-        # Hull White Recalibration
-        if hw_recalibration:
-            new_hull_white = self.hull_white.calibrate(new_market)
-        else:
-            new_hull_white = self.hull_white
-            
-        return Market(self.trade_date, self.estr_curve, self.euribor_curve, new_caplet_surface, new_cap_surface, new_hull_white)
 
     def rebuild(self):
         return Market(self.trade_date, self.estr_curve, self.euribor_curve, self.caplet_surface, self.cap_surface, self.hull_white)
