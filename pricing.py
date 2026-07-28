@@ -212,12 +212,12 @@ class Trade:
         if isinstance(self.instrument, IRS):
             return vanna
 
-        for strike in boundaries["Vol"]["VolStrikes"][:2]:
-            for vol_tenor in boundaries["Vol"]["VolTenors"][:2]:
+        for strike in boundaries["Vol"]["VolStrikes"][:]:
+            for vol_tenor in boundaries["Vol"]["VolTenors"][:]:
                 vbump = bumps["CapVolSurface"][strike][vol_tenor]
                 vbp   = vbump["bp"]
 
-                for rate_tenor in boundaries["Vol"]["RateTenors"][curve][:2]:
+                for rate_tenor in boundaries["Vol"]["RateTenors"][curve][:]:
                     rbump = bumps[curve][rate_tenor]
                     rbp   = rbump["bp"]
 
@@ -301,8 +301,49 @@ class Trade:
         sens.extend(self.vanna(bumps, boundaries, "ESTR", model, shifts))
         return sens
 
-    def actual_pnl(self, mkt_start, mkt_end):
-        return self.value(mkt_end) - self.value(mkt_start)
+    def actual_pnl(self, market_start, market_end):
+        return self.value(market_end) - self.value(market_start)
+
+    def split_pnl(self, market_start, market_end):
+        cap  = self.instrument.rebuild_market(market_start)
+        base = cap.bachelier_price() * self.notional * self.position
+
+        rate_only = cap.rebuild_rates(market_end).bachelier_price() * self.notional * self.position - base
+        vol_only  = cap.rebuild_vol(market_end).bachelier_price()   * self.notional * self.position - base
+        time      = cap.rebuild_time(market_end).bachelier_price()  * self.notional * self.position - base
+        total     = cap.rebuild_market(market_end).bachelier_price()* self.notional * self.position - base
+        cross     = total - rate_only - vol_only - time
+
+        return [dict(
+            ValueDate = market_end.trade_date,
+            RatePnL = rate_only,
+            VolPnL = vol_only,
+            TimePnL = time,
+            CrossPnL = cross,
+            TotalPnL = total,
+        )]
+
+    def pnl_attribution(self, sens):
+        pnl_explain = {
+            "Total" : 0
+        }
+
+        for row in sens:
+            measure = row["Measure"]
+            source = row["Source"]
+            value = row["PnL"]
+            pnl_explain["Total"] += value
+
+            if measure not in pnl_explain:
+                pnl_explain[measure] = dict()
+
+            if source not in pnl_explain[measure]:
+                pnl_explain[measure][source] = value
+
+            else:
+                pnl_explain[measure][source] += value
+
+        return pnl_explain
 
 class Portfolio:
     def __init__(self, trades: list[Trade] = []):
@@ -335,5 +376,56 @@ class Portfolio:
             sens.extend(trade.sens(bumps, bounds, model, shifts))
 
         return sens
+
+    def actual_pnl(self, market_start, market_end):
+        return self.value(market_end) - self.value(market_start)
+
+    def delta(self, bumps, boundaries, curve, model="fmm", shifts=None):
+        delta = []
+
+        for trade in self.trades:
+            delta.extend(trade.delta(bumps, boundaries, curve, model, shifts))
+
+        return delta
+
+    def gamma(self, bumps, boundaries, curve, model="fmm", shifts=None):
+        gamma = []
+
+        for trade in self.trades:
+            gamma.extend(trade.gamma(bumps, boundaries, curve, model, shifts))
+
+        return gamma
+
+    def vega(self, bumps, boundaries, model="fmm", shifts=None):
+        vega = []
+        
+        for trade in self.trades:
+            vega.extend(trade.vega(bumps, boundaries, model, shifts))
+
+        return vega
+
+    def volga(self, bumps, boundaries, model="fmm", shifts=None):
+        volga = []
+                
+        for trade in self.trades:
+            volga.extend(trade.volga(bumps, boundaries, model, shifts))
+
+        return volga
+
+    def vanna(self, bumps, boundaries, curve, model="fmm", shifts=None):
+        vanna = []
+                        
+        for trade in self.trades:
+            vanna.extend(trade.vanna(bumps, boundaries, curve, model, shifts))
+
+        return vanna
+
+    def theta(self, bumps, model="fmm", shifts=None):
+        theta = []
+                                
+        for trade in self.trades:
+            theta.extend(trade.theta(bumps, model, shifts))
+
+        return theta
 
 
