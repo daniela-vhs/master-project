@@ -310,8 +310,8 @@ class Trade:
         cap  = self.instrument.rebuild_market(previous_market)
         base = cap.bachelier_price(previous_market) * self.notional * self.position
 
-        rate_only = cap.rebuild_rates(current_market).bachelier_price(current_market)  * self.notional * self.position - base
-        vol_only  = cap.rebuild_vol(current_market).bachelier_price(current_market)    * self.notional * self.position - base
+        rate_only = cap.rebuild_rates(current_market, status_market=previous_market).bachelier_price(current_market, status_market=previous_market)  * self.notional * self.position - base
+        vol_only  = cap.rebuild_vol(current_market, status_market=previous_market).bachelier_price(current_market, status_market=previous_market)    * self.notional * self.position - base
         time      = cap.rebuild_time(current_market).bachelier_price(current_market)   * self.notional * self.position - base
         total     = cap.rebuild_market(current_market).bachelier_price(current_market) * self.notional * self.position - base
         realized  = cap.rebuild_market(current_market).realized(current_market)        * self.notional * self.position

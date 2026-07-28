@@ -333,8 +333,8 @@ class Caplet:
         fixed_rate = get_fixing(self.fixing_date, "EURIBOR6M")
         return max(fixed_rate - strike, 0) * self.tau
 
-    def value(self, market, strike, pricing_function="bachelier_price", *params):
-        status = self.status(market)
+    def value(self, market, strike, pricing_function="bachelier_price", *params, status_market=None):
+        status = self.status(status_market or market)
         if status == "Live":    return getattr(self, pricing_function)(strike, *params)
         elif status == "Fixed": return self.payoff(strike) * market.estr_curve.discount(self.payment_date)
         return 0.0
@@ -462,25 +462,18 @@ class Cap:
     def days_to_maturity(self, market):
         return (self.maturity - market.trade_date).astype(int)
 
-    def bachelier_price(self, market, flat_vol=False):
+    def bachelier_price(self, market, flat_vol=False, status_market=None):
         price = 0
-
-        if len(self.caplets) > 0:
-            for caplet in self.caplets.values():
-                if flat_vol:
-                    price += caplet.value(market, self.strike, "bachelier_price", self.cap_vol)
-                else:
-                    price += caplet.value(market, self.strike, "bachelier_price")
-
+        for caplet in self.caplets.values():
+            args = (self.cap_vol,) if flat_vol else ()
+            price += caplet.value(market, self.strike, "bachelier_price", *args, status_market=status_market)
         return price
     
-    def jamshidian_price(self, market, a, sigma):
+    def jamshidian_price(self, market, a, sigma, status_market=None):
         price = 0
-
-        if len(self.caplets) > 0:
-            for caplet in self.caplets.values():
-                price += caplet.value(market, self.strike, "jamshidian_price", a, sigma)
-
+        for caplet in self.caplets.values():
+            args = (a, sigma)
+            price += caplet.value(market, self.strike, "jamshidian_price", *args, status_market=status_market)
         return price
 
     def value(self, market, pricing_function="bachelier_price", *params):
@@ -521,14 +514,15 @@ class Cap:
 
         return Cap(self.trade_date, self.tenor, cap_vol, self.strike, caplets)
 
-    def rebuild_vol(self, market):
+    def rebuild_vol(self, market, status_market=None):
+        status_market = status_market or market
         # First cap vol
         maturity = self.caplets[self.tenor.tenor].accrual_end
         cap_vol  = market.cap_surface.cap_vol(maturity, self.strike)
 
         # Caplet vol
         caplets = {tenor: caplet.rebuild() for tenor, caplet in self.caplets.items()}
-        live_caplets = {tenor: caplet for tenor, caplet in caplets.items() if caplet.status(market) == "Live"}
+        live_caplets = {tenor: caplet for tenor, caplet in caplets.items() if caplet.status(status_market) == "Live"}
 
         new_vols = market.caplet_surface.caplet_vol([i.fixing_date for i in live_caplets.values()], self.strike)
 
@@ -537,9 +531,9 @@ class Cap:
 
         return Cap(self.trade_date, self.tenor, cap_vol, self.strike, caplets)
 
-    def rebuild_rates(self, market):
-        # Only caplets
-        caplets = {tenor: caplet.rebuild_rates(market) if caplet.status(market) == "Live" else caplet.rebuild() for tenor, caplet in self.caplets.items()}
+    def rebuild_rates(self, market, status_market=None):
+        status_market = status_market or market
+        caplets = {tenor: caplet.rebuild_rates(market) if caplet.status(status_market) == "Live" else caplet.rebuild() for tenor, caplet in self.caplets.items()}
         return Cap(self.trade_date, self.tenor, self.cap_vol, self.strike, caplets)
 
     def rebuild_time(self, market):
