@@ -7,6 +7,8 @@ from plotly.subplots import make_subplots
 import json
 import os
 
+from dates import Tenor
+
 st.set_page_config(
     page_title="Thesis Monitor — Greeks & PnL: HW vs FMM",
     layout="wide",
@@ -108,6 +110,25 @@ def load_conventions():
                 convs[name] = json.load(f)
     return convs
 
+@st.cache_data
+def load_sens():
+    df = pd.read_parquet("pricing_data/sens.parquet")
+    df["ValueDate"] = pd.to_datetime(df["ValueDate"])
+    df["TradeDate"] = pd.to_datetime(df["TradeDate"])
+    return df
+
+@st.cache_data
+def load_actual_pnl():
+    df = pd.read_parquet("pricing_data/actual_pnl.parquet")
+    df["ValueDate"] = pd.to_datetime(df["ValueDate"])
+    df["PrevDate"]  = pd.to_datetime(df["PrevDate"])
+    df["TradeDate"] = pd.to_datetime(df["TradeDate"])
+    # Drop trade-inception rows (ValueDate == TradeDate): PrevDate there is a
+    # bogus placeholder (either the calendar day before inception, which predates
+    # the trade, or an unrelated sentinel date) — never a real daily roll.
+    df = df[df["ValueDate"] != df["TradeDate"]]
+    return df
+
 zero_rates     = load_zero_rates()
 vols           = load_vols()
 stripped_vols  = load_stripped_vols()
@@ -116,6 +137,24 @@ irs_repricing  = load_irs_repricing()
 cap_repricing  = load_cap_repricing_validation()
 hw_calib       = load_hw_calibration()
 conventions    = load_conventions()
+sens_df        = load_sens()
+actual_pnl_df  = load_actual_pnl()
+
+# sens.parquet has exactly 3 trades; actual_pnl.parquet has more — restrict to the
+# 3 that have sensitivities computed, and use TradeDate as the unique trade key
+# (each of the 3 trade dates maps to exactly one TradeTenor in sens).
+TRADES = (sens_df[["TradeDate", "TradeTenor"]]
+          .drop_duplicates()
+          .sort_values("TradeDate")
+          .reset_index(drop=True))
+actual_pnl_df = actual_pnl_df.merge(TRADES, on=["TradeDate", "TradeTenor"])
+TRADE_LABELS  = [f"{r.TradeDate.strftime('%Y-%m-%d')} · {r.TradeTenor} Cap" for r in TRADES.itertuples()]
+
+MEASURE_ORDER  = ["Delta", "Gamma", "Vega", "Volga", "Vanna", "Theta"]
+MEASURE_COLORS = {
+    "Delta": "#3B82F6", "Gamma": "#F97316", "Vega": "#F5C518",
+    "Volga": "#D946EF", "Vanna": "#10B981", "Theta": "#374151", "Residual": "#D1D5DB",
+}
 
 all_dates   = sorted(zero_rates["TradeDate"].unique())
 
@@ -145,6 +184,34 @@ def date_select_slider(dates, key, default_frac=0.6, label="Trade date"):
     )
     return pd.Timestamp(selected)
 
+def bucket_label(row):
+    """Collapse Source/RateTenor/VolTenor into one readable risk-bucket label per row."""
+    if row["Measure"] == "Theta":
+        return "Time"
+    if row["Measure"] == "Vanna":
+        return f"{row['Source']} {row['RateTenor']} × Vol {row['VolTenor']}"
+    if pd.notna(row["RateTenor"]):
+        return f"{row['Source']} {row['RateTenor']}"
+    if pd.notna(row["VolTenor"]):
+        return f"Vol {row['VolTenor']}"
+    return row["Source"]
+
+def bucket_sort_key(label):
+    """Group buckets: ESTR tenors, then EURIBOR6M tenors, then Vol tenors, then Vanna cross-buckets, then Time."""
+    if label == "Time":
+        return (9, 0, 0)
+    if " × " in label:
+        rate_part, vol_part = label.split(" × ")
+        src, rtenor = rate_part.split(" ", 1)
+        vtenor = vol_part.replace("Vol ", "")
+        return (3, Tenor(rtenor).months, Tenor(vtenor).months)
+    src, tenor = label.split(" ", 1)
+    group = {"ESTR": 0, "EURIBOR6M": 1, "Vol": 2}.get(src, 4)
+    return (group, Tenor(tenor).months, 0)
+
+def sort_tenors(tenors):
+    return sorted(tenors, key=lambda t: Tenor(t).months)
+
 # ── Header ────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="thesis-header">
@@ -154,9 +221,243 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab_curves, tab_vols, tab_hw, tab_conv = st.tabs(
-    ["Zero curves", "Vol surface", "Hull-White", "Market conventions"]
+tab_pnl, tab_vols, tab_hw, tab_curves, tab_conv = st.tabs(
+    ["PnL Attribution", "Vol surface", "Hull-White", "Zero curves", "Market conventions"]
 )
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 0 — PnL ATTRIBUTION
+# ══════════════════════════════════════════════════════════════════════════════
+with tab_pnl:
+    trade_label_sel = st.radio("Trade", TRADE_LABELS, horizontal=True,
+                               label_visibility="collapsed", key="pnl_trade")
+    sel_trade_date = TRADES.iloc[TRADE_LABELS.index(trade_label_sel)]["TradeDate"]
+    sel_tenor      = TRADES.iloc[TRADE_LABELS.index(trade_label_sel)]["TradeTenor"]
+
+    trade_sens   = sens_df[sens_df["TradeDate"] == sel_trade_date]
+    trade_actual = actual_pnl_df[actual_pnl_df["TradeDate"] == sel_trade_date]
+
+    st.markdown(f'<span class="pill">{sel_trade_date.strftime("%Y-%m-%d")} · {sel_tenor} Cap</span>',
+                unsafe_allow_html=True)
+    st.markdown("<div style='margin:0.5rem 0;'></div>", unsafe_allow_html=True)
+
+    # ── Section 1: historical residuals, grouped by week/month/year ────────
+    st.markdown("<div style='margin-top:0.5rem;'></div>", unsafe_allow_html=True)
+    st.markdown('<span class="section-label">Historical residuals — average |actual − explained|</span>',
+                unsafe_allow_html=True)
+
+    hc1, hc2 = st.columns(2)
+    with hc1:
+        group_choice = st.radio("Group by", ["Week", "Month", "Year"], index=1,
+                                horizontal=True, key="pnl_group_by")
+    with hc2:
+        hist_measure_view = st.radio("Measures", ["All", "Rates", "Vol"], horizontal=True,
+                                     key="pnl_hist_measure_view")
+
+    RATE_MEASURES = ["Delta", "Gamma"]
+    VOL_MEASURES  = ["Vega", "Volga", "Vanna"]
+    hist_measures = {"Rates": RATE_MEASURES, "Vol": VOL_MEASURES}.get(hist_measure_view, MEASURE_ORDER)
+
+    hist_sens = trade_sens[trade_sens["Measure"].isin(hist_measures)]
+    hist_explained = (hist_sens.groupby(["ValueDate", "Model"])["PnL"].sum().reset_index()
+                       .rename(columns={"ValueDate": "PrevDate"}))
+
+    # Anchor on actual_pnl's own ValueDate/PrevDate pair, join sens in via PrevDate.
+    hist = (trade_actual[["ValueDate", "PrevDate", "TotalPnL"]]
+            .merge(hist_explained, on="PrevDate", how="left"))
+    hist["Residual"] = hist["TotalPnL"] - hist["PnL"]
+    if group_choice == "Week":
+        week_start = hist["ValueDate"] - pd.to_timedelta(hist["ValueDate"].dt.weekday, unit="D")
+        hist["Period"] = week_start.dt.strftime("%Y-%m-%d")
+    elif group_choice == "Month":
+        hist["Period"] = hist["ValueDate"].dt.to_period("M").astype(str)
+    else:
+        hist["Period"] = hist["ValueDate"].dt.to_period("Y").astype(str)
+
+    hist_agg = (hist.groupby(["Period", "Model"])["Residual"]
+                .apply(lambda x: x.abs().mean()).reset_index())
+    hist_pivot = hist_agg.pivot(index="Period", columns="Model", values="Residual").sort_index()
+
+    fig_c = go.Figure()
+    fig_c.add_trace(go.Scatter(
+        x=hist_pivot.index, y=hist_pivot.get("FMM"), name="FMM residual",
+        mode="lines+markers", line=dict(color="#1E90FF", width=2), marker=dict(size=5),
+        hovertemplate="%{x}: %{y:,.2f}<extra>FMM</extra>"
+    ))
+    fig_c.add_trace(go.Scatter(
+        x=hist_pivot.index, y=hist_pivot.get("HW"), name="HW residual",
+        mode="lines+markers", line=dict(color="#FF6347", width=2), marker=dict(size=5),
+        hovertemplate="%{x}: %{y:,.2f}<extra>HW</extra>"
+    ))
+    fig_c.update_layout(
+        height=300, margin=dict(l=0, r=0, t=8, b=0),
+        paper_bgcolor="white", plot_bgcolor="white",
+        font=dict(family="Inter", size=10),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, font=dict(size=10)),
+        xaxis=dict(showgrid=True, gridcolor="#f3f4f6", showline=True, linecolor="#e5e7eb"),
+        yaxis=dict(showgrid=True, gridcolor="#f3f4f6", title=dict(text="Avg |residual|", font=dict(size=10, color="#9ca3af")),
+                   showline=True, linecolor="#e5e7eb"),
+        hovermode="x unified"
+    )
+    st.plotly_chart(fig_c, use_container_width=True, config={"displayModeBar": False}, key="pnl_hist_chart")
+    st.caption(f"Measures counted as 'explained' here: {', '.join(hist_measures)}. The rest of the move "
+               f"shows up as residual.")
+
+    # ── Date navigation for the two day-specific sections below ────────────
+    st.markdown("<hr class='thin'>", unsafe_allow_html=True)
+    pnl_dates = sorted(trade_actual["ValueDate"].unique())
+    sel_value_date = date_select_slider(pnl_dates, key="pnl_date_slider", label="Value date")
+
+    day_actual_row = trade_actual[trade_actual["ValueDate"] == sel_value_date]
+    actual_val   = day_actual_row["TotalPnL"].iloc[0] if not day_actual_row.empty else np.nan
+    sens_lookup_date = day_actual_row["PrevDate"].iloc[0] if not day_actual_row.empty else None
+
+    st.markdown(
+        f'<span class="pill">📅 {sel_value_date.strftime("%d %b %Y")}</span>'
+        + (f'<span class="pill">Greeks as of {pd.Timestamp(sens_lookup_date).strftime("%d %b %Y")}</span>'
+           if sens_lookup_date is not None else ''),
+        unsafe_allow_html=True
+    )
+    st.markdown("<div style='margin:0.5rem 0;'></div>", unsafe_allow_html=True)
+
+    day_sens = trade_sens[trade_sens["ValueDate"] == sens_lookup_date].copy() if sens_lookup_date is not None else trade_sens.iloc[0:0].copy()
+
+    # ── Section 2: day comparison — explained (by measure) + residual ──────
+    st.markdown('<span class="section-label">Explained vs residual, this day — FMM vs Hull-White</span>',
+                unsafe_allow_html=True)
+    day_measures = st.multiselect("Measures included", MEASURE_ORDER, default=MEASURE_ORDER, key="pnl_day_measures")
+
+    day_filtered = day_sens[day_sens["Measure"].isin(day_measures)] if not day_sens.empty else day_sens
+    if day_filtered.empty:
+        measure_totals = pd.DataFrame(0.0, index=["FMM", "HW"], columns=MEASURE_ORDER)
+    else:
+        measure_totals = day_filtered.groupby(["Model", "Measure"])["PnL"].sum().unstack()
+        for m in ["FMM", "HW"]:
+            if m not in measure_totals.index:
+                measure_totals.loc[m] = 0.0
+        measure_totals = measure_totals.reindex(columns=MEASURE_ORDER, fill_value=0.0).fillna(0.0)
+    explained_total = measure_totals.sum(axis=1)
+    residual_day = actual_val - explained_total
+
+    fig_b = go.Figure()
+    for m in MEASURE_ORDER:
+        fig_b.add_trace(go.Bar(
+            x=["FMM", "HW"], y=[measure_totals.loc["FMM", m], measure_totals.loc["HW", m]],
+            name=m, marker_color=MEASURE_COLORS[m],
+            hovertemplate="%{x}: %{y:,.2f}<extra>" + m + "</extra>"
+        ))
+    fig_b.add_trace(go.Bar(
+        x=["FMM", "HW"], y=[residual_day.get("FMM", np.nan), residual_day.get("HW", np.nan)],
+        name="Residual", marker_color=MEASURE_COLORS["Residual"],
+        hovertemplate="%{x}: %{y:,.2f}<extra>Residual</extra>"
+    ))
+    fig_b.update_layout(
+        barmode="relative", height=320, margin=dict(l=0, r=0, t=8, b=0),
+        paper_bgcolor="white", plot_bgcolor="white",
+        font=dict(family="Inter", size=10),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, font=dict(size=10)),
+        xaxis=dict(showgrid=False, showline=True, linecolor="#e5e7eb"),
+        yaxis=dict(showgrid=True, gridcolor="#f3f4f6", title=dict(text="PnL", font=dict(size=10, color="#9ca3af")),
+                   showline=True, linecolor="#e5e7eb", zeroline=True, zerolinecolor="#9ca3af"),
+    )
+    st.plotly_chart(fig_b, use_container_width=True, config={"displayModeBar": False}, key="pnl_day_chart")
+    st.markdown(
+        f'<span class="pill">Actual PnL: {actual_val:,.2f}</span>'
+        f'<span class="pill">FMM residual: {residual_day.get("FMM", np.nan):,.2f}</span>'
+        f'<span class="pill">HW residual: {residual_day.get("HW", np.nan):,.2f}</span>',
+        unsafe_allow_html=True
+    )
+
+    # ── Section 3: sensitivities, split into one table per risk category ───
+    st.markdown("<hr class='thin'>", unsafe_allow_html=True)
+    st.markdown('<span class="section-label">Sensitivities, this day — FMM vs Hull-White</span>', unsafe_allow_html=True)
+
+    if day_sens.empty:
+        st.info("No sensitivities for this date.")
+    else:
+        def small_heatmap(z, x_labels, y_labels, height, value_fmt=",.0f"):
+            zmax_abs = np.nanmax(np.abs(z)) if z.size and not np.all(np.isnan(z)) else 1.0
+            zmax_abs = zmax_abs if zmax_abs else 1.0
+            z_text = [[f"{v:{value_fmt}}" if not np.isnan(v) else "" for v in row] for row in z]
+            fig = go.Figure(go.Heatmap(
+                z=z, x=x_labels, y=y_labels, zmin=-zmax_abs, zmax=zmax_abs, colorscale="RdBu_r",
+                text=z_text, texttemplate="%{text}", textfont=dict(size=8, family="JetBrains Mono"),
+                hovertemplate="%{y} / %{x}: %{z:,.2f}<extra></extra>",
+                colorbar=dict(thickness=8, len=0.9), xgap=1, ygap=1
+            ))
+            fig.update_layout(
+                height=height, margin=dict(l=0, r=20, t=4, b=0),
+                paper_bgcolor="white", plot_bgcolor="white",
+                font=dict(family="Inter", size=9),
+                xaxis=dict(type="category", tickfont=dict(size=9)),
+                yaxis=dict(type="category", autorange="reversed", tickfont=dict(size=9)),
+            )
+            return fig
+
+        def rate_table(source_name, display_name):
+            st.markdown(f'<span class="section-label">{display_name} — DV01 &amp; Gamma</span>', unsafe_allow_html=True)
+            d = day_sens[(day_sens["Source"] == source_name) & (day_sens["Measure"].isin(["Delta", "Gamma"]))]
+            tenors = sort_tenors(d["RateTenor"].dropna().unique())
+            cols = st.columns(2, gap="large")
+            for col, model in zip(cols, ["FMM", "HW"]):
+                with col:
+                    st.markdown(f'<span class="section-label">{model}</span>', unsafe_allow_html=True)
+                    dm = d[d["Model"] == model]
+                    pivot = dm.pivot_table(index="RateTenor", columns="Measure", values="PnL", aggfunc="sum").reindex(tenors)
+                    pivot = pivot.reindex(columns=["Delta", "Gamma"])
+                    pivot.columns = ["DV01", "Gamma"]
+                    st.plotly_chart(
+                        small_heatmap(pivot.values.astype(float), ["DV01", "Gamma"], tenors,
+                                     height=max(160, 22 * len(tenors) + 40)),
+                        use_container_width=True, config={"displayModeBar": False},
+                        key=f"pnl_rate_{source_name}_{model}"
+                    )
+
+        def vol_table(measure_name):
+            st.markdown(f'<span class="section-label">Vol — {measure_name} (tenor × strike)</span>', unsafe_allow_html=True)
+            d = day_sens[day_sens["Measure"] == measure_name]
+            tenors  = sort_tenors(d["VolTenor"].dropna().unique())
+            strikes = sorted(d["Strike"].dropna().unique())
+            strike_labels = [f"{s*100:.3f}%" for s in strikes]
+            cols = st.columns(2, gap="large")
+            for col, model in zip(cols, ["FMM", "HW"]):
+                with col:
+                    st.markdown(f'<span class="section-label">{model}</span>', unsafe_allow_html=True)
+                    dm = d[d["Model"] == model]
+                    pivot = dm.pivot_table(index="VolTenor", columns="Strike", values="PnL", aggfunc="sum")
+                    pivot = pivot.reindex(index=tenors, columns=strikes)
+                    st.plotly_chart(
+                        small_heatmap(pivot.values.astype(float), strike_labels, tenors,
+                                     height=max(160, 22 * len(tenors) + 40)),
+                        use_container_width=True, config={"displayModeBar": False},
+                        key=f"pnl_vol_{measure_name}_{model}"
+                    )
+
+        def vanna_table():
+            st.markdown('<span class="section-label">Vanna</span>', unsafe_allow_html=True)
+            d = day_sens[day_sens["Measure"] == "Vanna"].copy()
+            d["Bucket"] = d.apply(bucket_label, axis=1)
+            buckets = sorted(d["Bucket"].unique(), key=bucket_sort_key)
+            cols = st.columns(2, gap="large")
+            for col, model in zip(cols, ["FMM", "HW"]):
+                with col:
+                    st.markdown(f'<span class="section-label">{model}</span>', unsafe_allow_html=True)
+                    dm = d[d["Model"] == model]
+                    vals = dm.groupby("Bucket")["PnL"].sum().reindex(buckets).to_numpy().reshape(-1, 1)
+                    st.plotly_chart(
+                        small_heatmap(vals.astype(float), ["Vanna"], buckets,
+                                     height=max(160, 20 * len(buckets) + 40)),
+                        use_container_width=True, config={"displayModeBar": False},
+                        key=f"pnl_vanna_{model}"
+                    )
+
+        rate_table("ESTR", "ESTR")
+        rate_table("EURIBOR6M", "EURIBOR6M")
+        vol_table("Vega")
+        vol_table("Volga")
+        vanna_table()
+
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 1 — ZERO CURVES
@@ -216,7 +517,7 @@ with tab_curves:
                        ticksuffix="%", tickformat=".2f", showline=True, linecolor="#e5e7eb"),
             hovermode="x unified"
         )
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key="curves_main_chart")
 
     with right:
         st.markdown('<span class="section-label">Discount factors & zero rates</span>', unsafe_allow_html=True)
@@ -255,7 +556,7 @@ with tab_curves:
             yaxis=dict(showgrid=True, gridcolor="#f3f4f6", gridwidth=0.5,
                        ticksuffix="%", tickformat=".2f", showline=True, linecolor="#e5e7eb"),
         )
-        st.plotly_chart(fig3, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig3, use_container_width=True, config={"displayModeBar": False}, key="curves_hist_tenor_chart")
 
     # ── Curve bootstrap validation (IRS repricing) ──────────────────────────
     st.markdown("<hr class='thin'>", unsafe_allow_html=True)
@@ -294,7 +595,7 @@ with tab_curves:
                            showgrid=True, gridcolor="#f3f4f6", showline=True, linecolor="#e5e7eb")
         figv.update_yaxes(title_text="Euribor 6M error (bp)", ticksuffix=" bp", secondary_y=True,
                            showgrid=False, showline=True, linecolor="#e5e7eb")
-        st.plotly_chart(figv, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(figv, use_container_width=True, config={"displayModeBar": False}, key="curves_irs_validation_chart")
         st.caption("Max absolute repricing error across all tenors, per trade date.")
 
     with val_right:
@@ -378,7 +679,7 @@ with tab_vols:
                 yaxis=dict(title=dict(text="Cap tenor", font=dict(size=10, color="#9ca3af")),
                            autorange="reversed", type="category"),
             )
-            st.plotly_chart(figh, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(figh, use_container_width=True, config={"displayModeBar": False}, key=f"vol_heatmap_{title}")
 
     # ── 3D comparison ─────────────────────────────────────────────────────
     st.markdown("<div style='margin-top:0.5rem;'></div>", unsafe_allow_html=True)
@@ -494,7 +795,7 @@ with tab_vols:
                    showline=True, linecolor="#e5e7eb"),
         hovermode="x unified"
     )
-    st.plotly_chart(fig_ev, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig_ev, use_container_width=True, config={"displayModeBar": False}, key="vol_evolution_chart")
     st.caption(f"{ev_tenor} cap, strike {ev_strike_label} — flat (quoted, cap-level) vs stripped (caplet-level) normal vol.")
 
     # ── Cap repricing validation ────────────────────────────────────────────
@@ -523,7 +824,7 @@ with tab_vols:
             xaxis=dict(showgrid=True, gridcolor="#f3f4f6", showline=True, linecolor="#e5e7eb"),
             yaxis=dict(showgrid=True, gridcolor="#f3f4f6", ticksuffix=" bp", showline=True, linecolor="#e5e7eb"),
         )
-        st.plotly_chart(fign, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fign, use_container_width=True, config={"displayModeBar": False}, key="cap_repricing_nonatm_chart")
 
     with cr_right:
         st.markdown('<span class="section-label">ATM — max error</span>', unsafe_allow_html=True)
@@ -539,7 +840,7 @@ with tab_vols:
             xaxis=dict(showgrid=True, gridcolor="#f3f4f6", showline=True, linecolor="#e5e7eb"),
             yaxis=dict(showgrid=True, gridcolor="#f3f4f6", ticksuffix=" bp", showline=True, linecolor="#e5e7eb"),
         )
-        st.plotly_chart(figa, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(figa, use_container_width=True, config={"displayModeBar": False}, key="cap_repricing_atm_chart")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 3 — HULL-WHITE
@@ -601,10 +902,10 @@ with tab_hw:
     hw_c1, hw_c2 = st.columns(2, gap="large")
     with hw_c1:
         st.markdown('<span class="section-label">a — mean-reversion speed</span>', unsafe_allow_html=True)
-        st.plotly_chart(fig_a, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig_a, use_container_width=True, config={"displayModeBar": False}, key="hw_a_chart")
     with hw_c2:
         st.markdown('<span class="section-label">σ_HW — instantaneous volatility</span>', unsafe_allow_html=True)
-        st.plotly_chart(fig_s, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig_s, use_container_width=True, config={"displayModeBar": False}, key="hw_sigma_chart")
 
     st.caption("Red points = calibration pinned at a bound (mostly the pre-2022 negative-rate window). Dotted line marks the selected date.")
 
@@ -623,7 +924,7 @@ with tab_hw:
         xaxis=dict(showgrid=True, gridcolor="#f3f4f6", showline=True, linecolor="#e5e7eb"),
         yaxis=dict(type="log", showgrid=True, gridcolor="#f3f4f6", showline=True, linecolor="#e5e7eb"),
     )
-    st.plotly_chart(fig_e, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig_e, use_container_width=True, config={"displayModeBar": False}, key="hw_residual_chart")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 4 — MARKET CONVENTIONS
