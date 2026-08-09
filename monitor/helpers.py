@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import warnings
-from dates import Tenor
+from quant.dates import Tenor
 
 warnings.filterwarnings("ignore")
 

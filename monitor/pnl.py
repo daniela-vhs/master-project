@@ -1,6 +1,6 @@
 import streamlit as st
 from helpers import get_trades, chart_layout, write_subtitle, write_subsubtitle, get_risk_table, date_slider
-from dates import Tenor
+from quant.dates import Tenor
 import plotly.graph_objects as go
 import numpy as np
 

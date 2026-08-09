@@ -1,5 +1,5 @@
 from helpers import get_trades, print_trade, get_risk_table, sort_tenor, date_slider, apply_heatmap, write_subtitle, write_subsubtitle, chart_layout
-from dates import Tenor
+from quant.dates import Tenor
 import plotly.graph_objects as go
 import streamlit as st
 import numpy as np
