@@ -4,17 +4,17 @@ from helpers import write_subtitle, write_subsubtitle
 
 @st.cache_data
 def load_estr_convention():
-    with open("../market_conventions/estr.json") as f:
+    with open("market_conventions/estr.json") as f:
         return json.loads(f.read())
 
 @st.cache_data
 def load_euribor_convention():
-    with open("../market_conventions/euribor6m.json") as f:
+    with open("market_conventions/euribor6m.json") as f:
         return json.loads(f.read())
 
 @st.cache_data
 def load_vol_convention():
-    with open("../market_conventions/vol_surface.json") as f:
+    with open("market_conventions/vol_surface.json") as f:
         return json.loads(f.read())
 
 
