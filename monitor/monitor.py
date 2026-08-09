@@ -56,7 +56,7 @@ tab_1, tab_2, tab_3, tab_4, tab_5, tab_6 = st.tabs(["📈 &nbsp; PnL Attribution
 
 @st.cache_data
 def load_pnl():
-    df = pd.read_parquet("../pricing_data/actual_pnl.parquet")
+    df = pd.read_parquet("pricing_data/actual_pnl.parquet")
     return df
 
 pnl = load_pnl()
