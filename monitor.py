@@ -241,24 +241,19 @@ with tab_pnl:
                 unsafe_allow_html=True)
     st.markdown("<div style='margin:0.5rem 0;'></div>", unsafe_allow_html=True)
 
+    st.markdown('<span class="section-label">Measures included in "Explained PnL" (applies to both sections below)</span>',
+                unsafe_allow_html=True)
+    included_measures = st.multiselect("Measures", MEASURE_ORDER, default=MEASURE_ORDER,
+                                       label_visibility="collapsed", key="pnl_measure_filter")
+
     # ── Section 1: historical residuals, grouped by week/month/year ────────
     st.markdown("<div style='margin-top:0.5rem;'></div>", unsafe_allow_html=True)
     st.markdown('<span class="section-label">Historical residuals — average |actual − explained|</span>',
                 unsafe_allow_html=True)
+    group_choice = st.radio("Group by", ["Week", "Month", "Year"], index=1,
+                            horizontal=True, key="pnl_group_by")
 
-    hc1, hc2 = st.columns(2)
-    with hc1:
-        group_choice = st.radio("Group by", ["Week", "Month", "Year"], index=1,
-                                horizontal=True, key="pnl_group_by")
-    with hc2:
-        hist_measure_view = st.radio("Measures", ["All", "Rates", "Vol"], horizontal=True,
-                                     key="pnl_hist_measure_view")
-
-    RATE_MEASURES = ["Delta", "Gamma"]
-    VOL_MEASURES  = ["Vega", "Volga", "Vanna"]
-    hist_measures = {"Rates": RATE_MEASURES, "Vol": VOL_MEASURES}.get(hist_measure_view, MEASURE_ORDER)
-
-    hist_sens = trade_sens[trade_sens["Measure"].isin(hist_measures)]
+    hist_sens = trade_sens[trade_sens["Measure"].isin(included_measures)]
     hist_explained = (hist_sens.groupby(["ValueDate", "Model"])["PnL"].sum().reset_index()
                        .rename(columns={"ValueDate": "PrevDate"}))
 
@@ -300,8 +295,8 @@ with tab_pnl:
         hovermode="x unified"
     )
     st.plotly_chart(fig_c, use_container_width=True, config={"displayModeBar": False}, key="pnl_hist_chart")
-    st.caption(f"Measures counted as 'explained' here: {', '.join(hist_measures)}. The rest of the move "
-               f"shows up as residual.")
+    st.caption(f"Excluding {', '.join(sorted(set(MEASURE_ORDER) - set(included_measures))) or 'nothing'} from "
+               f"'Explained PnL' — the gap left over shows up here as residual.")
 
     # ── Date navigation for the two day-specific sections below ────────────
     st.markdown("<hr class='thin'>", unsafe_allow_html=True)
@@ -325,9 +320,8 @@ with tab_pnl:
     # ── Section 2: day comparison — explained (by measure) + residual ──────
     st.markdown('<span class="section-label">Explained vs residual, this day — FMM vs Hull-White</span>',
                 unsafe_allow_html=True)
-    day_measures = st.multiselect("Measures included", MEASURE_ORDER, default=MEASURE_ORDER, key="pnl_day_measures")
 
-    day_filtered = day_sens[day_sens["Measure"].isin(day_measures)] if not day_sens.empty else day_sens
+    day_filtered = day_sens[day_sens["Measure"].isin(included_measures)] if not day_sens.empty else day_sens
     if day_filtered.empty:
         measure_totals = pd.DataFrame(0.0, index=["FMM", "HW"], columns=MEASURE_ORDER)
     else:
