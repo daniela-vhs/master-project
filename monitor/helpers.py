@@ -7,39 +7,39 @@ warnings.filterwarnings("ignore")
 
 @st.cache_data
 def load_vols_data():
-    return pd.read_parquet("../clean_data/vols.parquet")
+    return pd.read_parquet("clean_data/vols.parquet")
 
 @st.cache_data
 def load_cap_stripping_data():
-    return pd.read_parquet("../clean_data/cap_stripping.parquet")
+    return pd.read_parquet("clean_data/cap_stripping.parquet")
 
 @st.cache_data
 def load_rates_data():
-    return pd.read_parquet("../clean_data/rates.parquet")
+    return pd.read_parquet("clean_data/rates.parquet")
 
 @st.cache_data
 def load_zero_rates_data():
-    return pd.read_parquet("../clean_data/zero_rates.parquet")
+    return pd.read_parquet("clean_data/zero_rates.parquet")
 
 @st.cache_data
 def load_hull_white_data():
-    return pd.read_parquet("../clean_data/hw_calibration.parquet")
+    return pd.read_parquet("clean_data/hw_calibration.parquet")
 
 @st.cache_data
 def load_actual_pnl_data():
-    return pd.read_parquet("../pricing_data/actual_pnl.parquet")
+    return pd.read_parquet("pricing_data/actual_pnl.parquet")
 
 @st.cache_data
 def load_sens_data():
-    return pd.read_parquet("../pricing_data/sens.parquet")
+    return pd.read_parquet("pricing_data/sens.parquet")
 
 @st.cache_data
 def load_cap_validation_data():
-    return pd.read_parquet("../validation/cap_repricing_validation.parquet")
+    return pd.read_parquet("validation/cap_repricing_validation.parquet")
 
 @st.cache_data
 def load_curve_validation_data():
-    return pd.read_parquet("../validation/irs_repricing.parquet")
+    return pd.read_parquet("validation/irs_repricing.parquet")
 
 def date_slider(dates, key, label="Valuation date"):
     dates = sorted(dates)
