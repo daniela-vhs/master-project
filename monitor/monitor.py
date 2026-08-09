@@ -20,7 +20,7 @@ st.set_page_config(
     page_title            = "PnL Explain: FMM vs HW",
     layout                = "wide",
     initial_sidebar_state = "expanded",
-    page_icon             = "🪙"
+    page_icon             = "📊"
 )
 
 # --------------------- #
