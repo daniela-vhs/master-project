@@ -245,7 +245,8 @@ def pnl_tab(actual_pnl_df, sens_df):
             line = dict(
                 color = "slateblue",
                 dash = "dot",
-            )
+            ),
+            name = "Value date",
         )
     )
 
