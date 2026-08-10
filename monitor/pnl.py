@@ -140,6 +140,12 @@ def pnl_tab(actual_pnl_df, sens_df):
 
             st.plotly_chart(fig, height=300, key=f"pnl_explained_{model}")
 
+    st.caption("Categories with negligible contribution are omitted. "
+    "Hull-White's Vega, Volga, and Vanna are not shown when their "
+    "recalibrated contribution on the selected date is zero or near-zero.")
+
+    st.divider()
+
     # ------------------------------------- #
     #          HISTORICAL RESIDUAS          #
     # ------------------------------------- #
