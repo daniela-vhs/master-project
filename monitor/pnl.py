@@ -87,6 +87,7 @@ def pnl_tab(actual_pnl_df, sens_df):
 
     for n, col in enumerate([col1, col2]):
         model = ["FMM", "HW"][n]
+        write_subsubtitle(model.replace("HW", "Hull-White"))
         with col:
             values = {
                 i: sens_pivot.loc[value_date].fillna(0).loc[i][model] for i in sens_measures
