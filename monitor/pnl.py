@@ -97,7 +97,7 @@ def pnl_tab(actual_pnl_df, sens_df):
 
             fig = go.Figure()
 
-            valid_values = {key: value for key, value in values.items() if value != 0}
+            valid_values = {key: value for key, value in values.items()}
 
             fig.add_trace(
                 go.Waterfall(
