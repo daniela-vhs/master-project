@@ -550,7 +550,7 @@ def risk_tab(sens_df):
                 apply_heatmap(
                     cross_pivot.loc[value_date][vanna_curve.upper().replace(" ", "")]\
                     .xs(vanna_rate_tenor, level="RateTenor")\
-                    .xs("FMM", level="Model", axis=1).dropna(how = "all").fillna(0) * 10_000,
+                    .xs(model, level="Model", axis=1).dropna(how = "all").fillna(0) * 10_000,
                     cmap,
                     axis = None,
                 ),

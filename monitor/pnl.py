@@ -1,5 +1,5 @@
 import streamlit as st
-from helpers import get_trades, chart_layout, write_subtitle, write_subsubtitle, get_risk_table, date_slider
+from helpers import get_trades, chart_layout, write_subtitle, write_subsubtitle, get_risk_table, date_slider, print_trade
 from quant.dates import Tenor
 import plotly.graph_objects as go
 import numpy as np
@@ -145,122 +145,6 @@ def pnl_tab(actual_pnl_df, sens_df):
     "recalibrated contribution on the selected date is zero or near-zero.")
 
     st.divider()
-
-    # ------------------------------------- #
-    #          HISTORICAL RESIDUAS          #
-    # ------------------------------------- #
-
-    st.subheader("Historical residuals")
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        sens_order = st.radio(
-            "Measure order",
-            ["First", "Second", "Cross", "Total"],
-            index = 3,
-            horizontal = True,
-            key = "sens_order",
-        )
-
-    with col2:
-        pnl_component = st.radio(
-            "PnL component",
-            ["Rate", "Vol", "Cross", "Time", "Total"],
-            index = 4,
-            horizontal = True,
-            key = "pnl_component"
-        )
-
-    with col3:
-        pnl_group_by = st.radio(
-            "Group by",
-            ["Day", "Week", "Month", "Year"],
-            index = 1,
-            key = "pnl_group_by",
-            horizontal = True,
-        )
-
-    pnl_group_by = {"Day": "D", "Week": "W", "Month": "ME", "Year": "YE"}[pnl_group_by]
-
-    sens_measures = ["Delta", "Gamma", "Vega", "Volga", "Vanna", "Theta"] if sens_order == "Total" else ["Delta", "Vega", "Theta"] if sens_order == "First" else ["Gamma", "Volga"] if sens_order == "Second" else ["Vanna"]
-
-    pnl_measures = ["Delta", "Gamma", "Vega", "Volga", "Vanna", "Theta"] if pnl_component == "Total" else ["Delta", "Gamma"] if pnl_component == "Rate" else ["Vega", "Volga"] if pnl_component == "Vol" else ["Vanna"] if pnl_component == "Cross" else ["Theta"]
-
-    selected_measures = set(sens_measures) & set(pnl_measures)
-
-    pnl_columns = [f"{pnl_component}PnL"]
-
-    if len(selected_measures) == 0:
-        if pnl_component == "Time":
-            selected_measures = {"Theta"}
-
-        elif pnl_component == "Cross" or sens_order == "Cross":
-            selected_measures = {"Vanna"}
-
-    fig = go.Figure()
-
-    for m, model in enumerate(["FMM", "HW"]):
-        name = model.replace("HW", "Hull-White")
-        color = ["dodgerblue", "tomato"][m]
-
-        hist_df = sens_pivot[[model]]
-        hist_df = hist_df[hist_df.index.get_level_values("Measure").isin(selected_measures)]
-
-        hist_df = hist_df.groupby("ValueDate").sum().join(pnl_df[pnl_columns]).rename({
-            pnl_columns[0]: "ActualPnL",
-            model: "ModelPnL",
-        }, axis=1)
-
-        hist_df["Residual"] = abs(hist_df.ActualPnL - hist_df.ModelPnL)
-
-        hist_df = hist_df.fillna(0).resample(pnl_group_by).sum() if pnl_group_by == "D" else hist_df.fillna(0).resample(pnl_group_by).mean()
-
-        try:
-            min_y_pnl = min(min_y_pnl, hist_df.Residual.min())
-        except:
-            min_y_pnl = hist_df.Residual.min()
-
-        try:
-            max_y_pnl = max(max_y_pnl, hist_df.Residual.max())
-        except:
-            max_y_pnl = hist_df.Residual.max()
-
-        fig.add_trace(
-            go.Scatter(
-                x = hist_df.index,
-                y = hist_df.Residual,
-                name = name,
-                mode = "lines+markers" if pnl_group_by != "D" else "lines",
-                line = dict(
-                    color = color,
-                    shape = "spline",
-                    smoothing = 1.3
-                ),
-                marker = dict(
-                    size = 6,
-                )
-            )
-        )
-
-    fig.add_trace(
-        go.Scatter(
-            x = np.repeat(value_date, 2),
-            y = [min_y_pnl, max_y_pnl],
-            mode = "lines",
-            line = dict(
-                color = "slateblue",
-                dash = "dot",
-            ),
-            name = "Value date",
-        )
-    )
-
-    fig.update_layout(
-        **chart_layout()
-    )
-
-    st.plotly_chart(fig, height = 300)
 
     # ------------------------------------- #
     #         ACTUAL PNL EVOLUTION          #
@@ -441,3 +325,125 @@ def pnl_tab(actual_pnl_df, sens_df):
     )
 
     st.plotly_chart(fig, height=300)
+
+    st.divider()
+
+    # ------------------------------------- #
+    #          HISTORICAL RESIDUAS          #
+    # ------------------------------------- #
+
+    st.subheader("Historical residuals")
+
+    portfolio = st.selectbox("Trade", [f"Only Selected – {print_trade(pnl_trade)}", "Full Portfolio"], index=1)
+
+    hist_pivot = sens_pivot if portfolio != "Full Portfolio" else sens_df.pivot_table(index=["ValueDate", "Measure"], columns=["Model"], values="PnL", aggfunc="sum")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        sens_order = st.radio(
+            "Measure order",
+            ["First", "Second", "Cross", "Total"],
+            index = 3,
+            horizontal = True,
+            key = "sens_order",
+        )
+
+    with col2:
+        pnl_component = st.radio(
+            "PnL component",
+            ["Rate", "Vol", "Cross", "Time", "Total"],
+            index = 4,
+            horizontal = True,
+            key = "pnl_component"
+        )
+
+    with col3:
+        pnl_group_by = st.radio(
+            "Group by",
+            ["Day", "Week", "Month", "Year"],
+            index = 1,
+            key = "pnl_group_by",
+            horizontal = True,
+        )
+
+    pnl_group_by = {"Day": "D", "Week": "W", "Month": "ME", "Year": "YE"}[pnl_group_by]
+
+    sens_measures = ["Delta", "Gamma", "Vega", "Volga", "Vanna", "Theta"] if sens_order == "Total" else ["Delta", "Vega", "Theta"] if sens_order == "First" else ["Gamma", "Volga"] if sens_order == "Second" else ["Vanna"]
+
+    pnl_measures = ["Delta", "Gamma", "Vega", "Volga", "Vanna", "Theta"] if pnl_component == "Total" else ["Delta", "Gamma"] if pnl_component == "Rate" else ["Vega", "Volga"] if pnl_component == "Vol" else ["Vanna"] if pnl_component == "Cross" else ["Theta"]
+
+    selected_measures = set(sens_measures) & set(pnl_measures)
+
+    pnl_columns = [f"{pnl_component}PnL"]
+
+    if len(selected_measures) == 0:
+        if pnl_component == "Time":
+            selected_measures = {"Theta"}
+
+        elif pnl_component == "Cross" or sens_order == "Cross":
+            selected_measures = {"Vanna"}
+
+    fig = go.Figure()
+
+    for m, model in enumerate(["FMM", "HW"]):
+        name = model.replace("HW", "Hull-White")
+        color = ["dodgerblue", "tomato"][m]
+
+        hist_df = hist_pivot[[model]]
+        hist_df = hist_df[hist_df.index.get_level_values("Measure").isin(selected_measures)]
+
+        hist_df = hist_df.groupby("ValueDate").sum().join(pnl_df[pnl_columns]).rename({
+            pnl_columns[0]: "ActualPnL",
+            model: "ModelPnL",
+        }, axis=1)
+
+        hist_df["Residual"] = abs(hist_df.ActualPnL - hist_df.ModelPnL)
+
+        hist_df = hist_df.fillna(0).resample(pnl_group_by).sum() if pnl_group_by == "D" else hist_df.fillna(0).resample(pnl_group_by).mean()
+
+        try:
+            min_y_pnl = min(min_y_pnl, hist_df.Residual.min())
+        except:
+            min_y_pnl = hist_df.Residual.min()
+
+        try:
+            max_y_pnl = max(max_y_pnl, hist_df.Residual.max())
+        except:
+            max_y_pnl = hist_df.Residual.max()
+
+        fig.add_trace(
+            go.Scatter(
+                x = hist_df.index,
+                y = hist_df.Residual,
+                name = name,
+                mode = "lines+markers" if pnl_group_by != "D" else "lines",
+                line = dict(
+                    color = color,
+                    shape = "spline",
+                    smoothing = 1.3
+                ),
+                marker = dict(
+                    size = 6,
+                )
+            )
+        )
+
+    fig.add_trace(
+        go.Scatter(
+            x = np.repeat(value_date, 2),
+            y = [min_y_pnl, max_y_pnl],
+            mode = "lines",
+            line = dict(
+                color = "slateblue",
+                dash = "dot",
+            ),
+            name = "Value date",
+        )
+    )
+
+    fig.update_layout(
+        **chart_layout()
+    )
+
+    st.plotly_chart(fig, height = 300)
