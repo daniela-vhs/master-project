@@ -24,7 +24,7 @@ def risk_tab(sens_df):
 
     rate_pivot = sort_tenor(
         risk_table.pivot_table(
-            index = ["ValueDate", "RateTenor"],
+            index = ["SensDate", "RateTenor"],
             columns = ["Measure", "Source", "Model"],
             values = "Value",
             aggfunc = "sum"
@@ -33,14 +33,14 @@ def risk_tab(sens_df):
     ) / 1_000_000
     
     vol_pivot = risk_table.pivot_table(
-        index = ["ValueDate", "VolTenor"],
+        index = ["SensDate", "VolTenor"],
         columns = ["Measure", "Strike", "Model"],
         values = "Value",
         aggfunc = "sum"
     ) / 1_000_000
 
     cross_pivot = risk_table.pivot_table(
-        index = ["ValueDate", "RateTenor", "VolTenor"],
+        index = ["SensDate", "RateTenor", "VolTenor"],
         columns = ["Source", "Strike", "Model"],
         values = "Value",
         aggfunc = "sum"
@@ -48,7 +48,7 @@ def risk_tab(sens_df):
 
     # Valid dates for this trade
     value_date = date_slider(
-        risk_table.ValueDate.unique(),
+        risk_table.SensDate.unique(),
         key = "pnl_date_slider",
         label = "Valuation date"
     )
@@ -661,7 +661,7 @@ def risk_tab(sens_df):
     st.dataframe(
         apply_heatmap(
             theta_df[
-                theta_df.ValueDate == value_date
+                theta_df.SensDate == value_date
             ].pivot_table(
                 index = "Measure",
                 columns = "Model",
@@ -684,7 +684,7 @@ def risk_tab(sens_df):
 
         fig.add_trace(
             go.Scatter(
-                x = theta_df[theta_df.Model == model].ValueDate,
+                x = theta_df[theta_df.Model == model].SensDate,
                 y = theta_df[theta_df.Model == model].Value,
                 name = model.replace("HW", "Hull-White"),
                 line = dict(

@@ -80,7 +80,7 @@ def hull_white_tab(hw_df):
                 go.Scatter(
                     x = hw_df.index,
                     y = hw_df[measure],
-                    name = measure,
+                    name = measure.replace("sigma", "σ"),
                     mode = "lines",
                     line = dict(
                         color = "dodgerblue",

@@ -36,7 +36,7 @@ st.divider()
 # --------------------- #
 
 actual_pnl_df = load_actual_pnl_data()
-sens_df = load_sens_data()
+sens_df = load_sens_data(actual_pnl_df)
 vols_df = load_vols_data()
 caplet_vol_df = load_cap_stripping_data()
 cap_validation_df = load_cap_validation_data()

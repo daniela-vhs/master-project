@@ -3,8 +3,11 @@ from helpers import get_trades, chart_layout, write_subtitle, write_subsubtitle,
 from quant.dates import Tenor
 import plotly.graph_objects as go
 import numpy as np
+import pandas as pd
 
 def pnl_tab(actual_pnl_df, sens_df):
+    actual_pnl_df = actual_pnl_df[actual_pnl_df.ValueDate > actual_pnl_df.TradeDate]
+
     sens_trades = get_trades(sens_df)
     
     pnl_trades = actual_pnl_df.drop_duplicates(
@@ -30,103 +33,109 @@ def pnl_tab(actual_pnl_df, sens_df):
     ).to_dict("records")
 
     common_trades = set([tuple(i.items()) for i in sens_trades]) & set([tuple(i.items()) for i in pnl_trades])
+    common_trades = sorted([dict(i) for i in common_trades], key = lambda x: (x["TradeDate"], x["TradeMaturity"]))
 
-    common_trades = sorted(
-        [dict(i) for i in common_trades],
-        key = lambda x: (x["TradeDate"], Tenor(x["TradeTenor"]))
-    )
-
-    st.subheader("Actual PnL vs Explained PnL")
-
-    pnl_trade = st.selectbox(
-        "Select trade:",
-        common_trades,
-        key = "pnl_trade",
-        format_func = lambda x: f'{x["Instrument"]}({x["TradeDate"].date()}, {x["TradeTenor"]})'
-    )
-
-    pnl_df = actual_pnl_df[
-        (actual_pnl_df.TradeDate == pnl_trade["TradeDate"]) &
-        (actual_pnl_df.Instrument == pnl_trade["Instrument"]) &
-        (actual_pnl_df.TradeTenor == pnl_trade["TradeTenor"]) &
-        (actual_pnl_df.TradeMaturity == pnl_trade["TradeMaturity"]) &
-        (actual_pnl_df.Strike == pnl_trade["TradeStrike"]) &
-        (actual_pnl_df.ValueDate > actual_pnl_df.TradeDate)
-    ].set_index("ValueDate")
-
-    sens_pivot = get_risk_table(
-        pnl_trade,
-        sens_df
-    ).rename(
-        {"ValueDate": "SensDate"},
-        axis=1
-    ).set_index("SensDate").join(
-        pnl_df.reset_index().set_index("PrevDate")[["ValueDate"]]
-    ).reset_index().pivot_table(
-        index = ["ValueDate", "Measure"],
-        columns = "Model",
-        values = "PnL",
-        aggfunc = "sum"
-    )
-
-    # ------------------------------------- #
-    #         ACTUAL PNL EVOLUTION          #
-    # ------------------------------------- #
-    st.subheader("Explained vs Residual")
-    value_date = date_slider(sens_pivot.index.get_level_values("ValueDate"), key = "pnl_value_date")
+    pnl_trade = st.selectbox("Select trade:", ["Full portfolio"] + common_trades, index = 0, format_func = lambda x: x if x == "Full portfolio" else print_trade(x))
 
     sens_measures = st.multiselect(
-        "Measures included",
+        "Sens measures included:",
         ["Delta", "Gamma", "Vega", "Volga", "Vanna", "Theta"],
-        ["Delta", "Gamma", "Vega", "Volga", "Vanna", "Theta"],
+        ["Delta", "Gamma", "Vega", "Volga", "Vanna", "Theta"]
     )
 
-    day_pnl = pnl_df.loc[value_date].TotalPnL
+    measure_order = {i[1]: i[0] for i in enumerate(["Delta", "Gamma", "Vega", "Volga", "Vanna", "Theta"])}
 
-    col1, col2 = st.columns(2, gap="large")
+    pnl_components = st.multiselect(
+        "PnL components included:",
+        ["Rate", "Vol", "Time", "Cross", "Realized"],
+        ["Rate", "Vol", "Time", "Cross", "Realized"],
+    )
+
+    pnl_order      = {i[1]: i[0] for i in enumerate(["Rate", "Vol", "Time", "Cross", "Realized"])}
+    pnl_components = ["Rate", "Vol", "Time", "Cross", "Realized"] if len(pnl_components) == 0 else pnl_components
+    pnl_components = sorted(pnl_components, key = lambda x: pnl_order[x])
+
+    st.subheader("Explained vs residual")
+
+    pnl_df = actual_pnl_df.copy() if pnl_trade == "Full portfolio" else\
+        actual_pnl_df[
+            (actual_pnl_df.Instrument == pnl_trade["Instrument"]) &
+            (actual_pnl_df.TradeDate == pnl_trade["TradeDate"]) &
+            (actual_pnl_df.TradeTenor == pnl_trade["TradeTenor"])
+        ]
+
+    sens_df = sens_df.copy() if pnl_trade == "Full portfolio" else\
+        sens_df[
+            (sens_df.TradeDate == pnl_trade["TradeDate"]) &
+            (sens_df.TradeTenor == pnl_trade["TradeTenor"])
+        ]
+
+    pnl_date = date_slider(sorted(pnl_df.ValueDate.unique()), label = "Valuation date", key = "pnl_date")
+
+    sens_df = sens_df[sens_df.Measure.isin(sens_measures)] if len(sens_measures) > 0 else sens_df
+
+    pnl_pivot = pnl_df.pivot_table(index = "ValueDate", values = [f"{i}PnL" for i in pnl_components], aggfunc="sum").fillna(0)[[f"{i}PnL" for i in pnl_components]]
+
+    if "RealizedPnL" in pnl_pivot:
+        pnl_pivot["TotalPnL"] = pnl_pivot.drop("RealizedPnL", axis=1).sum(axis=1)
+    else:
+        pnl_pivot["TotalPnL"] = pnl_pivot.sum(axis=1)
+
+    sens_pivot = sens_df.pivot_table(index = "ValueDate", columns = ["Model", "Measure"], values = "PnL", aggfunc="sum").fillna(0)
+
+    day_pnl = pnl_pivot.loc[pnl_date].TotalPnL.sum()
+
+    col1, col2 = st.columns(2)
 
     for n, col in enumerate([col1, col2]):
         model = ["FMM", "HW"][n]
-        with col:
-            write_subsubtitle(model.replace("HW", "Hull-White"))
-            values = {
-                i: sens_pivot.loc[value_date].fillna(0).loc[i][model] for i in sens_measures
-            }
+        model_name = model.replace("HW", "Hull-White")
+        key = f"pnl-{model}"
 
-            residual = pnl_df.loc[value_date][["TotalPnL"]].sum() - sum(list(values.values()))
+        with col:
+            write_subsubtitle(model_name)
+
+            components = {k: v for k, v in sens_pivot[model].loc[pnl_date].to_dict().items() if v != 0}
+            components = dict(sorted(components.items(), key = lambda x: measure_order[x[0]]))
+
+            sens_pnl   = sum(components.values())
+            residual   = day_pnl - sens_pnl
+
+            names  = list(components.keys()) + ["Explained", "Residual", "Actual"]
+            values = list(components.values()) + [sens_pnl] + [residual] + [day_pnl]
+            types  = ["relative" for i in components.values()] + ["total", "relative", "total"]
+            text   = [f"{i:0,.0f}" if n != len(values) - 2 else f"{abs(1 - sens_pnl / day_pnl):.0%}" for n, i in enumerate(values)]
 
             fig = go.Figure()
 
-            valid_values = {key: value for key, value in values.items() if value != 0}
-
             fig.add_trace(
                 go.Waterfall(
-                    name = "20",
+                    name = model,
                     orientation = "v",
-                    measure = ["relative" for i in list(valid_values.keys())] + ["total", "relative", "total"],
-                    x = list(valid_values.keys()) + ["Explained", "Residual", "Actual"],
-                    y = list(valid_values.values()) + [sum(list(valid_values.values())), residual, day_pnl],
-                    text = [f"{i:.0f}" for i in list(valid_values.values()) + [sum(list(valid_values.values())), residual, day_pnl]],
+                    measure = types,
+                    x = names,
+                    y = values,
+                    text = text,
                     decreasing = dict(
                         marker = dict(
-                            color = "tomato",
+                            color = "crimson",
                         )
                     ),
                     increasing = dict(
                         marker = dict(
-                            color = "dodgerblue",
+                            color = "steelblue",
                         )
                     ),
                     totals = dict(
                         marker = dict(
-                            color = "darkslateblue",
+                            color = "#444",
                         )
-                    ),
+                    )
                 )
             )
 
             fig.update_layout(
-                **chart_layout()
+                **chart_layout(),
             )
 
             fig.update_yaxes(
@@ -135,315 +144,173 @@ def pnl_tab(actual_pnl_df, sens_df):
                     font = dict(
                         size = 12,
                     )
-                )
+                ),
             )
 
-            st.plotly_chart(fig, height=300, key=f"pnl_explained_{model}")
+            fig.update_xaxes(
+                tickangle = -90
+            )
 
-    st.caption("Categories with negligible contribution are omitted. "
-    "Hull-White's Vega, Volga, and Vanna are not shown when their "
-    "recalibrated contribution on the selected date is zero or near-zero.")
+            st.plotly_chart(fig, key=key, height=300)
+
+    st.caption(
+        "Categories with negligible contribution are omitted. "
+        "Hull-White's Vega, Volga, and Vanna are not shown when their "
+        "recalibrated contribution on the selected date is exactly zero."
+    )
+
+    st.caption(
+        r"Residual label: $\Big|1 - \frac{\text{ExplainedPnL}}{\text{ActualPnL}}\Big|$, non-explained portion of Actual PnL."
+    )
 
     st.divider()
 
-    # ------------------------------------- #
-    #         ACTUAL PNL EVOLUTION          #
-    # ------------------------------------- #
+    st.subheader("Historical residuals")
 
-    st.subheader("Actual PnL evolution")
+    residual_group = st.radio(
+        "Group by:",
+        ["Week", "Month", "Year"],
+        index = 1,
+        horizontal = True,
+        key = "residual_group"
+    )
 
-    col1, col2 = st.columns(2)
+    residual_group = {"Day": "D", "Week": "W", "Month": "ME", "Year": "YE"}[residual_group]
 
-    with col1:
-        pnl_type = st.radio(
-            "PnL type:",
-            ["Total", "Realized", "Split"],
-            key = "pnl_type",
-            horizontal = True,
-        )
-
-    with col2:
-        group_pnl = st.radio(
-            "Group by:",
-            ["Day", "Week", "Month", "Year"],
-            index = 1,
-            key = "group_pnl",
-            horizontal = True,
-        )
-
-        group_pnl = {"Day": "D", "Week": "W", "Month": "ME", "Year": "YE"}[group_pnl]
+    joint_pivot      = pnl_pivot[["TotalPnL"]].join(sens_pivot.T.groupby("Model").sum().T)
+    joint_pivot.FMM -= joint_pivot.TotalPnL
+    joint_pivot.HW  -= joint_pivot.TotalPnL
+    joint_pivot      = abs(joint_pivot).resample(residual_group).mean().dropna()
 
     fig = go.Figure()
 
-    if pnl_type == "Split":
-        max_y = max(
-            np.maximum(0, pnl_df.resample(group_pnl).RatePnL.sum())\
-            + np.maximum(0, pnl_df.resample(group_pnl).VolPnL.sum())\
-            + np.maximum(0, pnl_df.resample(group_pnl).CrossPnL.sum())\
-            + np.maximum(0, pnl_df.resample(group_pnl).TimePnL.sum())\
-            + np.maximum(0, pnl_df.resample(group_pnl).RealizedPnL.sum())
-        )
-        
-        min_y = min(
-            np.minimum(0, pnl_df.resample(group_pnl).RatePnL.sum())\
-            + np.minimum(0, pnl_df.resample(group_pnl).VolPnL.sum())\
-            + np.minimum(0, pnl_df.resample(group_pnl).CrossPnL.sum())\
-            + np.minimum(0, pnl_df.resample(group_pnl).TimePnL.sum())\
-            + np.minimum(0, pnl_df.resample(group_pnl).RealizedPnL.sum())
-        )
-
-        fig.add_trace(
-            go.Bar(
-                x = pnl_df.resample(group_pnl).last().index,
-                y = pnl_df.resample(group_pnl).RatePnL.sum(),
-                name = "Rate PnL",
-                marker = dict(
-                    color = "dodgerblue"
-                )
-            )
-        )
-
-        fig.add_trace(
-            go.Bar(
-                x = pnl_df.resample(group_pnl).last().index,
-                y = pnl_df.resample(group_pnl).VolPnL.sum(),
-                name = "VolPnL",
-                marker = dict(
-                    color = "darkslateblue",
-                )
-            )
-        )
-
-        fig.add_trace(
-            go.Bar(
-                x = pnl_df.resample(group_pnl).last().index,
-                y = pnl_df.resample(group_pnl).CrossPnL.sum(),
-                name = "CrossPnL",
-                marker = dict(
-                    color = "crimson",
-                )
-            )
-        )
-
-        fig.add_trace(
-            go.Bar(
-                x = pnl_df.resample(group_pnl).last().index,
-                y = pnl_df.resample(group_pnl).TimePnL.sum(),
-                name = "TimePnL",
-                marker = dict(
-                    color = "silver",
-                )
-            )
-        )
-
-        fig.add_trace(
-            go.Bar(
-                x = pnl_df.resample(group_pnl).last().index,
-                y = pnl_df.resample(group_pnl).RealizedPnL.sum(),
-                name = "RealizedPnL",
-                marker = dict(
-                    color = "tomato"
-                )
-            )
-        )
-
-        if group_pnl != "D":
-            fig.add_trace(
-                go.Scatter(
-                    x = pnl_df.resample(group_pnl).last().index,
-                    y = (pnl_df.resample(group_pnl).TotalPnL.sum() + pnl_df.resample(group_pnl).RealizedPnL.sum()),
-                    name = "TotalPnL",
-                    mode = "lines+markers",
-                    marker = dict(
-                        color = "black",
-                        line = dict(
-                            color = "white",
-                            width = 1.3
-                        ),
-                        size = 8
-                        # size = 1.2
-                    ),
-                    line = dict (
-                        shape = "spline",
-                        smoothing = 0.25,
-                        width = 1.3
-                    )
-                )
-            )
-
-    elif pnl_type == "Realized":
-        min_y = pnl_df.resample(group_pnl).RealizedPnL.sum().min()
-        max_y = pnl_df.resample(group_pnl).RealizedPnL.sum().max()
-        fig.add_trace(
-            go.Bar(
-                x = pnl_df.resample(group_pnl).last().index,
-                y = pnl_df.resample(group_pnl).RealizedPnL.sum(),
-                name = "Realized PnL",
-                marker = dict(
-                    color = "tomato"
-                )
-            )
-        )
-
-    elif pnl_type == "Total":
-        min_y = (pnl_df.resample(group_pnl).TotalPnL.sum() + pnl_df.resample(group_pnl).RealizedPnL.sum()).min()
-        max_y = (pnl_df.resample(group_pnl).TotalPnL.sum() + pnl_df.resample(group_pnl).RealizedPnL.sum()).max()
-        fig.add_trace(
-            go.Bar(
-                x = pnl_df.resample(group_pnl).last().index,
-                y = (pnl_df.resample(group_pnl).TotalPnL.sum() + pnl_df.resample(group_pnl).RealizedPnL.sum()),
-                name = "Realized PnL",
-                marker = dict(
-                    color = "dodgerblue",
-                )
-            )
-        )
-
     fig.add_trace(
         go.Scatter(
-            x = np.repeat(value_date, 2),
-            y = [min_y, max_y],
-            mode = "lines",
+            x = joint_pivot.index,
+            y = joint_pivot.FMM,
+            name = "FMM residual",
+            mode = "lines+markers" if residual_group != "W" else "lines",
             line = dict(
-                color = "slateblue",
-                dash = "dot",
-            ),
-            name = "Value date",
+                color = "dodgerblue",
+                shape = "spline",
+                width = 1.2,
+            )
         )
     )
 
-    fig.update_yaxes(
-        nticks = 10,
-        title = dict(
-            text = "PnL"
+    fig.add_trace(
+        go.Scatter(
+            x = joint_pivot.index,
+            y = joint_pivot.HW,
+            name = "Hull-White residual",
+            mode = "lines+markers" if residual_group != "W" else "lines",
+            line = dict(
+                color = "tomato",
+                shape = "spline",
+                width = 1.2,
+            )
+        )
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            x = joint_pivot.index,
+            y = joint_pivot.TotalPnL,
+            name = "Actual PnL (mean |daily|, scale reference)",
+            mode = "lines+markers" if residual_group != "W" else "lines",
+            line = dict(
+                dash = "dot",
+                color = "black",
+                shape = "spline",
+                width = 1.2,
+            ),
         )
     )
 
     fig.update_layout(
-        barmode = "relative",
         **chart_layout(),
+        yaxis = dict(
+            type = "log",
+            title = "Mean daily |PnL| (log scale)",
+        ),
     )
 
     st.plotly_chart(fig, height=300)
 
     st.divider()
 
-    # ------------------------------------- #
-    #          HISTORICAL RESIDUAS          #
-    # ------------------------------------- #
+    st.subheader("Actual PnL evolution")
 
-    st.subheader("Historical residuals")
+    pnl_group = st.radio(
+        "Group by:",
+        ["Week", "Month", "Year"],
+        index = 1,
+        horizontal = True,
+        key = "pnl_group"
+    )
 
-    portfolio = st.selectbox("Trade", [f"Only Selected – {print_trade(pnl_trade)}", "Full Portfolio"], index=1)
+    pnl_group = {"Day": "D", "Week": "W", "Month": "ME", "Year": "YE"}[pnl_group]
 
-    hist_pivot = sens_pivot if portfolio != "Full Portfolio" else sens_df.pivot_table(index=["ValueDate", "Measure"], columns=["Model"], values="PnL", aggfunc="sum")
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        sens_order = st.radio(
-            "Measure order",
-            ["First", "Second", "Cross", "Total"],
-            index = 3,
-            horizontal = True,
-            key = "sens_order",
-        )
-
-    with col2:
-        pnl_component = st.radio(
-            "PnL component",
-            ["Rate", "Vol", "Cross", "Time", "Total"],
-            index = 4,
-            horizontal = True,
-            key = "pnl_component"
-        )
-
-    with col3:
-        pnl_group_by = st.radio(
-            "Group by",
-            ["Day", "Week", "Month", "Year"],
-            index = 1,
-            key = "pnl_group_by",
-            horizontal = True,
-        )
-
-    pnl_group_by = {"Day": "D", "Week": "W", "Month": "ME", "Year": "YE"}[pnl_group_by]
-
-    sens_measures = ["Delta", "Gamma", "Vega", "Volga", "Vanna", "Theta"] if sens_order == "Total" else ["Delta", "Vega", "Theta"] if sens_order == "First" else ["Gamma", "Volga"] if sens_order == "Second" else ["Vanna"]
-
-    pnl_measures = ["Delta", "Gamma", "Vega", "Volga", "Vanna", "Theta"] if pnl_component == "Total" else ["Delta", "Gamma"] if pnl_component == "Rate" else ["Vega", "Volga"] if pnl_component == "Vol" else ["Vanna"] if pnl_component == "Cross" else ["Theta"]
-
-    selected_measures = set(sens_measures) & set(pnl_measures)
-
-    pnl_columns = [f"{pnl_component}PnL"]
-
-    if len(selected_measures) == 0:
-        if pnl_component == "Time":
-            selected_measures = {"Theta"}
-
-        elif pnl_component == "Cross" or sens_order == "Cross":
-            selected_measures = {"Vanna"}
+    grouped_pnl = pnl_pivot.resample(pnl_group).sum().dropna()
 
     fig = go.Figure()
 
-    for m, model in enumerate(["FMM", "HW"]):
-        name = model.replace("HW", "Hull-White")
-        color = ["dodgerblue", "tomato"][m]
-
-        hist_df = hist_pivot[[model]]
-        hist_df = hist_df[hist_df.index.get_level_values("Measure").isin(selected_measures)]
-
-        hist_df = hist_df.groupby("ValueDate").sum().join(pnl_df[pnl_columns]).rename({
-            pnl_columns[0]: "ActualPnL",
-            model: "ModelPnL",
-        }, axis=1)
-
-        hist_df["Residual"] = abs(hist_df.ActualPnL - hist_df.ModelPnL)
-
-        hist_df = hist_df.fillna(0).resample(pnl_group_by).sum() if pnl_group_by == "D" else hist_df.fillna(0).resample(pnl_group_by).mean()
-
-        try:
-            min_y_pnl = min(min_y_pnl, hist_df.Residual.min())
-        except:
-            min_y_pnl = hist_df.Residual.min()
-
-        try:
-            max_y_pnl = max(max_y_pnl, hist_df.Residual.max())
-        except:
-            max_y_pnl = hist_df.Residual.max()
-
-        fig.add_trace(
-            go.Scatter(
-                x = hist_df.index,
-                y = hist_df.Residual,
-                name = name,
-                mode = "lines+markers" if pnl_group_by != "D" else "lines",
-                line = dict(
-                    color = color,
-                    shape = "spline",
-                    smoothing = 1.3
-                ),
-                marker = dict(
-                    size = 6,
-                )
-            )
-        )
-
     fig.add_trace(
         go.Scatter(
-            x = np.repeat(value_date, 2),
-            y = [min_y_pnl, max_y_pnl],
-            mode = "lines",
+            x = grouped_pnl.index,
+            y = grouped_pnl.TotalPnL,
+            name = "Total PnL",
+            mode = "lines+markers",
             line = dict(
-                color = "slateblue",
-                dash = "dot",
-            ),
-            name = "Value date",
+                color = "black",
+                dash = "dot"
+            )
+        )
+    )
+
+    fig.add_trace(
+        go.Bar(
+            x = grouped_pnl.index,
+            y = grouped_pnl.RatePnL,
+            name = "Rate PnL"
+        )
+    )
+
+    fig.add_trace(
+        go.Bar(
+            x = grouped_pnl.index,
+            y = grouped_pnl.VolPnL,
+            name = "Rate PnL"
+        )
+    )
+
+    fig.add_trace(
+        go.Bar(
+            x = grouped_pnl.index,
+            y = grouped_pnl.TimePnL,
+            name = "Time PnL"
+        )
+    )
+
+    fig.add_trace(
+        go.Bar(
+            x = grouped_pnl.index,
+            y = grouped_pnl.CrossPnL,
+            name = "Cross PnL"
+        )
+    )
+
+    fig.add_trace(
+        go.Bar(
+            x = grouped_pnl.index,
+            y = grouped_pnl.RealizedPnL,
+            name = "Realized PnL"
         )
     )
 
     fig.update_layout(
-        **chart_layout()
+        **chart_layout(),
+        barmode = "relative",
     )
 
     st.plotly_chart(fig, height = 300)

@@ -30,8 +30,14 @@ def load_actual_pnl_data():
     return pd.read_parquet("pricing_data/actual_pnl.parquet")
 
 @st.cache_data
-def load_sens_data():
-    return pd.read_parquet("pricing_data/sens.parquet")
+def load_sens_data(pnl_data):
+    df = pd.read_parquet("pricing_data/sens.parquet").rename({"ValueDate": "SensDate"}, axis=1)
+
+    date_map = pnl_data.set_index("PrevDate").ValueDate.to_dict()
+
+    df["ValueDate"] = df.SensDate.apply(lambda x: date_map[x])
+
+    return df
 
 @st.cache_data
 def load_cap_validation_data():
@@ -62,12 +68,21 @@ def print_trade(trade):
     return f'{trade["Instrument"]}({trade["TradeDate"].date()}, {trade["TradeTenor"]})'
 
 def get_risk_table(trade, sens_data):
-    return sens_data[
-        (sens_data.Instrument == trade["Instrument"]) &
-        (sens_data.TradeTenor == trade["TradeTenor"]) &
-        (sens_data.TradeDate == trade["TradeDate"]) &
-        (sens_data.TradeStrike == trade["TradeStrike"])
-        ]
+    trade = [trade] if isinstance(trade, dict) else trade
+
+    output = []
+
+    for t in trade:
+        output.append(
+            sens_data[
+                (sens_data.Instrument == t["Instrument"]) &
+                (sens_data.TradeTenor == t["TradeTenor"]) &
+                (sens_data.TradeDate == t["TradeDate"]) &
+                (sens_data.TradeStrike == t["TradeStrike"])
+            ]
+        )
+
+    return pd.concat(output)
 
 def get_trade_dates(trade, sens_data):
     return get_risk_table(trade, sens_data).ValueDate.unique()
