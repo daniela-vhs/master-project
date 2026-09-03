@@ -193,7 +193,7 @@ def pnl_tab(actual_pnl_df, sens_df):
             line = dict(
                 color = "dodgerblue",
                 shape = "spline",
-                width = 1.2,
+                width = 1.5,
             )
         )
     )
@@ -207,7 +207,7 @@ def pnl_tab(actual_pnl_df, sens_df):
             line = dict(
                 color = "tomato",
                 shape = "spline",
-                width = 1.2,
+                width = 1.5,
             )
         )
     )
@@ -222,7 +222,7 @@ def pnl_tab(actual_pnl_df, sens_df):
                 dash = "dot",
                 color = "black",
                 shape = "spline",
-                width = 1.2,
+                width = 1.5,
             ),
         )
     )
@@ -254,19 +254,6 @@ def pnl_tab(actual_pnl_df, sens_df):
     grouped_pnl = pnl_pivot.resample(pnl_group).sum().dropna()
 
     fig = go.Figure()
-
-    fig.add_trace(
-        go.Scatter(
-            x = grouped_pnl.index,
-            y = grouped_pnl.TotalPnL,
-            name = "Total PnL",
-            mode = "lines+markers",
-            line = dict(
-                color = "black",
-                dash = "dot"
-            )
-        )
-    )
 
     fig.add_trace(
         go.Bar(
@@ -305,6 +292,19 @@ def pnl_tab(actual_pnl_df, sens_df):
             x = grouped_pnl.index,
             y = grouped_pnl.RealizedPnL,
             name = "Realized PnL"
+        )
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            x = grouped_pnl.index,
+            y = grouped_pnl.TotalPnL,
+            name = "Total PnL",
+            mode = "lines+markers",
+            line = dict(
+                color = "black",
+                dash = "dot"
+            )
         )
     )
 
