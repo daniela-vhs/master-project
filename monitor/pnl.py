@@ -286,6 +286,8 @@ def pnl_tab(actual_pnl_df, sens_df):
 
     st.divider()
 
+    st.subheader
+
     st.subheader("Actual PnL evolution")
 
     pnl_group = st.radio(
@@ -306,7 +308,7 @@ def pnl_tab(actual_pnl_df, sens_df):
     fig.add_trace(
         go.Bar(
             x = grouped_pnl.index,
-            y = grouped_pnl.RatePnL,
+            y = grouped_pnl.RatePnL if "RatePnL" in grouped_pnl else np.zeros_like(grouped_pnl.index),
             name = "Rate PnL"
         )
     )
@@ -314,15 +316,15 @@ def pnl_tab(actual_pnl_df, sens_df):
     fig.add_trace(
         go.Bar(
             x = grouped_pnl.index,
-            y = grouped_pnl.VolPnL,
-            name = "Rate PnL"
+            y = grouped_pnl.VolPnL if "VolPnL" in grouped_pnl else np.zeros_like(grouped_pnl.index),
+            name = "Vol PnL"
         )
     )
 
     fig.add_trace(
         go.Bar(
             x = grouped_pnl.index,
-            y = grouped_pnl.TimePnL,
+            y = grouped_pnl.TimePnL if "TimePnL" in grouped_pnl else np.zeros_like(grouped_pnl.index),
             name = "Time PnL"
         )
     )
@@ -330,7 +332,7 @@ def pnl_tab(actual_pnl_df, sens_df):
     fig.add_trace(
         go.Bar(
             x = grouped_pnl.index,
-            y = grouped_pnl.CrossPnL,
+            y = grouped_pnl.CrossPnL if "CrossPnL" in grouped_pnl else np.zeros_like(grouped_pnl.index),
             name = "Cross PnL"
         )
     )
@@ -338,7 +340,7 @@ def pnl_tab(actual_pnl_df, sens_df):
     fig.add_trace(
         go.Bar(
             x = grouped_pnl.index,
-            y = grouped_pnl.RealizedPnL,
+            y = grouped_pnl.RealizedPnL if "RealizedPnL" in grouped_pnl else np.zeros_like(grouped_pnl.index),
             name = "Realized PnL"
         )
     )
