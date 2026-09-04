@@ -180,6 +180,9 @@ def pnl_tab(actual_pnl_df, sens_df):
     joint_pivot      = pnl_pivot[["TotalPnL"]].join(sens_pivot.T.groupby("Model").sum().T)
     joint_pivot.FMM -= joint_pivot.TotalPnL
     joint_pivot.HW  -= joint_pivot.TotalPnL
+
+    residual_pivot = joint_pivot.copy()
+
     joint_pivot      = abs(joint_pivot).resample(residual_group).mean().dropna()
 
     fig = go.Figure()
@@ -237,6 +240,50 @@ def pnl_tab(actual_pnl_df, sens_df):
 
     st.plotly_chart(fig, height=300)
 
+    residual_pivot["FMMBetter"] = abs(residual_pivot.FMM) < abs(residual_pivot.HW)
+    
+    pnl_year = residual_pivot.resample("YE").count()[["TotalPnL"]]
+    pnl_year.columns = ["Days"]
+    pnl_year = pnl_year.join(abs(residual_pivot[["TotalPnL"]]).resample("YE").mean())
+    pnl_year = pnl_year.join(abs(residual_pivot[["FMM"]]).resample("YE").mean())
+    pnl_year = pnl_year.join(abs(residual_pivot[["HW"]]).resample("YE").mean())
+    pnl_year["RatioFMM"] = pnl_year.FMM / pnl_year.TotalPnL
+    pnl_year["RatioHW"] = pnl_year.HW / pnl_year.TotalPnL
+    pnl_year = pnl_year.join(residual_pivot[["FMMBetter"]].resample("YE").sum())
+    pnl_year["FMMBetter"] /= pnl_year.Days
+    pnl_year.index = pnl_year.index.to_series().apply(lambda x: x.year)
+    pnl_year = pnl_year.rename_axis("Year")
+
+    st.dataframe(
+        pnl_year,
+        column_config = dict(
+            TotalPnL = st.column_config.NumberColumn(
+                "Mean |actual|",
+                format = "%.1f",
+            ),
+            FMM = st.column_config.NumberColumn(
+                "Mean |res| FMM",
+                format = "%.1f",
+            ),
+            HW = st.column_config.NumberColumn(
+                "Mean |res| HW",
+                format = "%.1f",
+            ),
+            RatioFMM = st.column_config.NumberColumn(
+                "Ratio FMM",
+                format = "percent",
+            ),
+            RatioHW = st.column_config.NumberColumn(
+                "Ratio HW",
+                format = "percent",
+            ),
+            FMMBetter = st.column_config.NumberColumn(
+                "FMM Better",
+                format = "percent",
+            ),
+        )
+    )
+
     st.divider()
 
     st.subheader("Actual PnL evolution")
@@ -252,6 +299,7 @@ def pnl_tab(actual_pnl_df, sens_df):
     pnl_group = {"Day": "D", "Week": "W", "Month": "ME", "Year": "YE"}[pnl_group]
 
     grouped_pnl = pnl_pivot.resample(pnl_group).sum().dropna()
+    grouped_pnl["TotalPnL"] = grouped_pnl.sum(axis=1) - grouped_pnl.TotalPnL
 
     fig = go.Figure()
 
@@ -303,8 +351,9 @@ def pnl_tab(actual_pnl_df, sens_df):
             mode = "lines+markers",
             line = dict(
                 color = "black",
-                dash = "dot"
-            )
+                dash = "dot",
+                width = 1.5,
+            ),
         )
     )
 
