@@ -197,63 +197,6 @@ class Trade:
 
         return volga
 
-    def vanna(self, bumps, boundaries, curve, model="fmm", shifts=None):
-        vanna = []
-
-        if isinstance(self.instrument, IRS):
-            return vanna
-
-        for strike in boundaries["Vol"]["VolStrikes"][:]:
-            for vol_tenor in boundaries["Vol"]["VolTenors"][:]:
-                vbump = bumps["CapVolSurface"][strike][vol_tenor]
-                vbp   = vbump["bp"]
-
-                for rate_tenor in boundaries["Vol"]["RateTenors"][curve][:]:
-                    rbump = bumps[curve][rate_tenor]
-                    rbp   = rbump["bp"]
-
-                    rup_vup = self.instrument.rebuild_rates(rbump["up"]).rebuild_vol(vbump["up"])
-                    rup_vdn = self.instrument.rebuild_rates(rbump["up"]).rebuild_vol(vbump["down"])
-                    rdn_vup = self.instrument.rebuild_rates(rbump["down"]).rebuild_vol(vbump["up"])
-                    rdn_vdn = self.instrument.rebuild_rates(rbump["down"]).rebuild_vol(vbump["down"])
-
-                    if model == "fmm":
-                        # p_up = self.instrument.value(bump["up"])
-                        rup_vup = rup_vup.bachelier_price(vbump["up"])
-                        rup_vdn = rup_vdn.bachelier_price(vbump["down"])
-                        rdn_vup = rdn_vup.bachelier_price(vbump["up"])
-                        rdn_vdn = rdn_vdn.bachelier_price(vbump["down"])
-
-                    elif model == "hw":
-                        # p_up = self.instrument.value(bump["up"], "jamshidian_price", bump["up"].hull_white.a, bump["up"].hull_white.sigma)
-                        rup_vup = rup_vup.jamshidian_price(vbump["up"], vbump["up"].hull_white.a, vbump["up"].hull_white.sigma)
-                        rup_vdn = rup_vdn.jamshidian_price(vbump["down"], vbump["down"].hull_white.a, vbump["down"].hull_white.sigma)
-                        rdn_vup = rdn_vup.jamshidian_price(vbump["up"], vbump["up"].hull_white.a, vbump["up"].hull_white.sigma)
-                        rdn_vdn = rdn_vdn.jamshidian_price(vbump["down"], vbump["down"].hull_white.a, vbump["down"].hull_white.sigma)
-
-                    value = (rup_vup - rup_vdn - rdn_vup + rdn_vdn) / (2 * rbp / 10_000) / (2 * vbp)
-
-                    if abs(value) > 1e-10:
-                        vanna_value = dict(
-                            TradeDate = rbump["mid"].trade_date,
-                            Source = curve,
-                            RateTenor = rate_tenor,
-                            VolTenor = vol_tenor,
-                            Strike = strike,
-                            Measure = "Vanna",
-                            Order = 2,
-                            Value = value * self.notional * self.position
-                        )
-
-                        if shifts is not None:
-                            vanna_value["RateShift"] = shifts[curve][rate_tenor]
-                            vanna_value["VolShift"] = shifts["CapVolSurface"][strike][vol_tenor]
-                            vanna_value["PnL"] = vanna_value["Value"] * vanna_value["RateShift"] * vanna_value["VolShift"]
-
-                        vanna.append(vanna_value)
-
-        return vanna
-
     def vanna(self, bumps, boundaries, curve, model="fmm", shifts=None): # AI Optimization
         vanna = []
 
