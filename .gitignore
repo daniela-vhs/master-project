@@ -1,5 +1,6 @@
 # Other
 .DS_Store
+arch.txt
 # Python / Jupyter
 *.ipynb
 # Byte-compiled / optimized / DLL files
