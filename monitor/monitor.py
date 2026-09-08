@@ -28,7 +28,7 @@ st.set_page_config(
 # --------------------- #
 
 st.markdown("""<h1 style='font-size: 1.5em;'>Explaining PnL in Interest Rate Options</h1>""", unsafe_allow_html=True)
-st.caption("Greeks, Hedging and a Comparison of Hull–White and the Forward Market Model")
+st.caption("PnL and Risk attribution: a Comparison of Hull–White and the Forward Market Model")
 st.divider()
 
 # --------------------- #
