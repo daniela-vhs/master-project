@@ -6,7 +6,7 @@ MSc thesis, Quantitative Finance & Risk Management (MAFINRISK), Università Bocc
 
 Compares two interest rate models — the one-factor Hull-White short-rate model and the
 Forward Market Model — on their ability to explain the daily PnL of a portfolio of interest
-rate options. The question is not which model prices better in isolation, but which one
+rate options (Caps). The question is not which model prices better in isolation, but which one
 produces Greeks that actually reconcile realised PnL against predicted PnL: the test a
 front-office or model validation team applies before trusting a model in production.
 
@@ -14,8 +14,8 @@ front-office or model validation team applies before trusting a model in product
 
 1. **Calibration.** Both models are calibrated to ATM cap volatility surface.
 2. **Greeks.** Delta, vega, gamma, volga, theta, vanna.
-3. **PnL attribution.** Daily PnL is decomposed into delta, vega, gamma, carry, and an unexplained residual.
-4. **Comparison.** Models are ranked on the size and stability of the unexplained residual, and on hedging performance over 3 years.
+3. **PnL attribution.** Daily PnL is decomposed into delta, vega, gamma, theta, volga, vanna, and an unexplained residual.
+4. **Comparison.** Models are ranked on the size and stability of the unexplained residual over 3 years.
 
 ## Repository structure
 
